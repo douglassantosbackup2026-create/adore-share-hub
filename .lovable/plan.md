@@ -1,83 +1,73 @@
 
-# Mostrar conteúdo somente após cadastro
+# Pop-up de Verificação de Idade na página /discover
 
 ## Objetivo
 
-Qualquer conteúdo de posts (incluindo os gratuitos) só pode ser visualizado por usuários cadastrados e logados. Visitantes sem conta veem o perfil do criador e os planos de assinatura, mas os posts aparecem bloqueados com um CTA de cadastro.
+Exibir um modal bloqueante na primeira visita à página `/discover` perguntando se o usuário tem 18 anos ou mais. Quem confirmar acessa normalmente; quem negar é redirecionado para a página inicial. A resposta fica salva no `localStorage` para não exibir o pop-up a cada visita.
 
 ---
 
-## O que precisa mudar
+## Comportamento detalhado
 
-### 1. Banco de dados — RLS (2 alterações)
+### Primeira visita (sem resposta salva)
+- A página carrega normalmente por baixo (Navbar + grid de criadores)
+- Um overlay escuro com fundo desfocado (`backdrop-blur`) cobre todo o conteúdo
+- O modal aparece centralizado, não pode ser fechado clicando fora nem pressionando ESC
+- Dois botões:
+  - **"Sim, tenho 18 anos ou mais"** → fecha o modal, salva `age_verified = "true"` no `localStorage`, página fica acessível
+  - **"Não, sou menor de idade"** → redireciona para `/` (página inicial)
 
-**Política removida:**
-- `"Anyone can view free posts"` — atualmente usa `USING (min_plan = 'free')`, sem checar autenticação. Qualquer pessoa sem conta pode ler posts gratuitos via API.
+### Visitas seguintes
+- Se `localStorage.getItem("age_verified") === "true"` → modal não aparece
 
-**Política removida:**
-- `"Authenticated users can see all posts in feed"` — usa `USING (true)`, expõe todo o conteúdo para qualquer usuário logado, inclusive posts pagos sem assinatura.
-
-**Políticas que ficam (sem alteração):**
-- `"Subscribers can view paid posts"` — já requer `auth.uid()` e assinatura ativa.
-- `"Creators can insert/update/delete their own posts"` — intocadas.
-
-**Novas políticas adicionadas:**
-
-```sql
--- Posts gratuitos: só quem está autenticado vê
-CREATE POLICY "Authenticated users can view free posts"
-ON public.posts FOR SELECT
-USING (auth.uid() IS NOT NULL AND min_plan = 'free');
-```
-
-Com isso, a lógica de acesso fica:
-- **Não logado** → não vê nenhum post (nem gratuito)
-- **Logado sem assinatura** → vê posts gratuitos, posts pagos bloqueados no frontend
-- **Assinante ativo** → vê todos os posts do criador assinado
-- **O próprio criador** → vê todos os seus posts (coberto pela policy de subscriber com `creator_id = auth.uid()`)
+### Usuários já logados
+- O modal ainda aparece na primeira visita mesmo estando logado, pois a verificação de idade é independente da autenticação
 
 ---
 
-### 2. Frontend — `src/pages/CreatorProfile.tsx`
+## O que muda
 
-A grade de posts precisar tratar o visitante não logado. Em vez de exibir 9 posts mockados (3 "desbloqueados" e 6 bloqueados), o comportamento será:
+### Novo componente: `src/components/AgeGateModal.tsx`
 
-**Usuário não logado:**
-- A grid exibe um overlay de bloqueio em TODOS os posts com mensagem "Crie sua conta para ver o conteúdo" e botão "Cadastrar agora" → redireciona para `/signup`.
+Um modal construído com os primitivos `Dialog` do Radix (já instalado no projeto) com:
+- Overlay com `backdrop-blur-md` sobre o conteúdo da página
+- Ícone de escudo ou cadeado (lucide-react)
+- Título: **"Verificação de idade"**
+- Subtítulo: **"Este site contém conteúdo adulto. Você confirma que tem 18 anos ou mais?"**
+- Aviso legal pequeno abaixo dos botões
+- Botão primário (gradient-primary): "Sim, tenho 18 anos ou mais"
+- Botão outline vermelho/destructive: "Não, sou menor de idade"
+- `preventClose` — desabilita o fechamento pelo `X`, clique fora e ESC
 
-**Usuário logado sem assinatura:**
-- Posts gratuitos aparecem normalmente; posts pagos mostram o cadeado.
+### Atualização: `src/pages/Discover.tsx`
 
-**Usuário assinante:**
-- Todos os posts do criador aparecem desbloqueados.
-
-A grade também será atualizada para usar os posts reais do banco (`realPosts`), substituindo o array `lockedPosts` hardcoded, conforme já discutido anteriormente. Isso resolve os dois problemas ao mesmo tempo.
+- Importar o `AgeGateModal`
+- Adicionar estado `showAgeGate` inicializado com:
+  ```ts
+  useState(() => localStorage.getItem("age_verified") !== "true")
+  ```
+- Renderizar `<AgeGateModal open={showAgeGate} onConfirm={...} onDeny={...} />`
+- `onConfirm`: salva no localStorage e fecha o modal
+- `onDeny`: redireciona para `/` via `useNavigate`
 
 ---
 
-### 3. Frontend — `src/pages/Feed.tsx`
+## Nenhuma alteração no banco de dados
 
-O Feed já está por trás de `<ProtectedRoute>`, então só usuários logados chegam lá. Nenhuma alteração necessária.
-
----
-
-### 4. Frontend — `src/pages/Discover.tsx` e `src/pages/Index.tsx`
-
-Essas páginas mostram **cards de criadores** (nome, avatar, categoria, preço), não o conteúdo dos posts. Perfis são públicos (policy `"Profiles are viewable by everyone"`), então essas páginas continuam funcionando sem login — o que é correto para captação de novos usuários.
+A verificação de idade é puramente client-side via `localStorage`. Não há necessidade de salvar no banco pois:
+- É uma proteção legal básica (honesty-based), não um controle de acesso técnico
+- O controle de acesso real ao conteúdo já está feito via RLS no banco
 
 ---
 
 ## Sequência de execução
 
 ```text
-1. Remover as 2 políticas RLS permissivas no banco
-2. Criar nova política "Authenticated users can view free posts"
-3. Atualizar CreatorProfile.tsx:
-   a. Substituir lockedPosts mockados por realPosts reais
-   b. Adicionar overlay de "cadastre-se" para visitantes não logados
+1. Criar src/components/AgeGateModal.tsx
+2. Atualizar src/pages/Discover.tsx (importar e renderizar o modal)
 ```
 
 ## Arquivos alterados
 
-- **Banco de dados**: 2 policies removidas, 1 criada
-- **`src/pages/CreatorProfile.tsx`**: grid de posts refatorada (dados reais + gate de login para não logados)
+- **Novo**: `src/components/AgeGateModal.tsx`
+- **Atualizado**: `src/pages/Discover.tsx`
