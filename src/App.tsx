@@ -16,6 +16,7 @@ import Messages from "./pages/Messages";
 import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
+import FanProfile from "./pages/FanProfile";
 
 const queryClient = new QueryClient();
 
@@ -36,6 +37,7 @@ const App = () => (
             <Route path="/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
             <Route path="/dashboard" element={<CreatorRoute><Dashboard /></CreatorRoute>} />
             <Route path="/settings" element={<CreatorRoute><Settings /></CreatorRoute>} />
+            <Route path="/profile/:id" element={<FanProfile />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
