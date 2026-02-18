@@ -1,1 +1,4 @@
 project_id = "wuesavaaqkaxldctpojk"
+
+[functions.meta-capi]
+verify_jwt = false

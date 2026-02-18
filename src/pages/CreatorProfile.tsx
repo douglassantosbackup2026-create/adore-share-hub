@@ -1,11 +1,12 @@
 import { useParams, Link } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Heart, Star, Lock, MessageCircle, Share2, ChevronLeft, Check, Zap, Users } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { useCreatorProfile } from "@/hooks/useCreatorProfile";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { sendMetaEvent } from "@/lib/metaCapi";
 
 const defaultPlans = [
   {
@@ -46,6 +47,13 @@ const CreatorProfile = () => {
   const [activeTab, setActiveTab] = useState("Todos");
   const [liked, setLiked] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(0);
+
+  // Fire ViewContent when profile is loaded
+  useEffect(() => {
+    if (realProfile) {
+      sendMetaEvent({ event_name: "ViewContent" });
+    }
+  }, [realProfile?.id]);
 
   // If no real profile found, show 404
   if (!realProfile) {
@@ -102,6 +110,12 @@ const CreatorProfile = () => {
       toast.info("Você já é assinante!");
       return;
     }
+    sendMetaEvent({
+      event_name: "InitiateCheckout",
+      user_email: user.email,
+      value: plans[selectedPlan].price,
+      currency: "BRL",
+    });
     try {
       await subscribe.mutateAsync(plans[selectedPlan].name);
       toast.success("Assinatura realizada com sucesso!");

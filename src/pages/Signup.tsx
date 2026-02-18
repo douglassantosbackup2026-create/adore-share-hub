@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { sendMetaEvent } from "@/lib/metaCapi";
 
 type Role = "fan" | "creator";
 
@@ -61,6 +62,7 @@ const Signup = () => {
     if (error) {
       toast({ title: "Erro ao criar conta", description: error.message, variant: "destructive" });
     } else {
+      sendMetaEvent({ event_name: "CompleteRegistration", user_email: form.email });
       toast({ title: "Conta criada!", description: "Verifique seu e-mail para confirmar o cadastro." });
       navigate("/login");
     }
