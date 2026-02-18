@@ -3,8 +3,12 @@ import { useState } from "react";
 import { Heart, Star, Lock, MessageCircle, Share2, ChevronLeft, Check, Zap, Users } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import mockCreators from "@/data/creators";
+import { useCreatorProfile } from "@/hooks/useCreatorProfile";
+import { useSubscription } from "@/hooks/useSubscription";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
-const plans = [
+const defaultPlans = [
   {
     name: "Fã",
     emoji: "💖",
@@ -35,16 +39,67 @@ const postTypes = ["Todos", "Fotos", "Vídeos", "Lives"];
 
 const CreatorProfile = () => {
   const { id } = useParams();
-  const creator = mockCreators.find((c) => c.id === Number(id)) || mockCreators[0];
+  const { user } = useAuth();
+  
+  // Try real data
+  const { profile: realProfile, plans: realPlans, posts: realPosts, subscriberCount } = useCreatorProfile(id);
+  const { isSubscribed, subscribe } = useSubscription(id);
+
+  // Fallback to mock
+  const mockCreator = mockCreators.find((c) => c.id === Number(id)) || mockCreators[0];
+
+  const creator = realProfile
+    ? {
+        ...realProfile,
+        avatar: realProfile.avatar_url || mockCreator.avatar,
+        cover: realProfile.cover_url || mockCreator.cover,
+        price: realPlans.length ? realPlans[0].price : mockCreator.price,
+        subscribers: subscriberCount || mockCreator.subscribers,
+        posts: realPosts.length || mockCreator.posts,
+        rating: mockCreator.rating,
+        verified: true,
+        tags: realProfile.category ? [realProfile.category] : [],
+        handle: realProfile.handle || mockCreator.handle,
+      }
+    : mockCreator;
+
+  const plans = realPlans.length
+    ? realPlans.map((p, i) => ({
+        name: p.plan_name,
+        emoji: ["💖", "🔥", "💎"][i % 3],
+        desc: defaultPlans[i % 3]?.desc ?? "",
+        perks: defaultPlans[i % 3]?.perks ?? [],
+        price: p.price,
+        popular: i === 1,
+      }))
+    : defaultPlans.map((p) => ({ ...p, price: (creator as any).price * p.multiplier }));
+
   const [activeTab, setActiveTab] = useState("Todos");
   const [liked, setLiked] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState(1);
+  const [selectedPlan, setSelectedPlan] = useState(plans.length > 1 ? 1 : 0);
 
   const lockedPosts = Array.from({ length: 9 }, (_, i) => ({
     id: i + 1,
     locked: i > 2,
     type: i % 3 === 0 ? "video" : "photo",
   }));
+
+  const handleSubscribe = async () => {
+    if (!user) {
+      toast.error("Faça login para assinar");
+      return;
+    }
+    if (isSubscribed) {
+      toast.info("Você já é assinante!");
+      return;
+    }
+    try {
+      await subscribe.mutateAsync(plans[selectedPlan].name);
+      toast.success("Assinatura realizada com sucesso!");
+    } catch {
+      toast.error("Erro ao assinar. Tente novamente.");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -54,16 +109,12 @@ const CreatorProfile = () => {
       <div className="relative h-72 md:h-96 mt-16">
         <img src={creator.cover} alt="" className="h-full w-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/30 to-transparent" />
-
-        {/* Back button */}
         <Link
           to="/discover"
           className="absolute top-6 left-6 flex items-center gap-1.5 rounded-full bg-background/60 backdrop-blur-sm border border-border/50 px-3 py-2 text-sm font-medium text-foreground hover:bg-background/80 transition-colors"
         >
           <ChevronLeft className="h-4 w-4" /> Voltar
         </Link>
-
-        {/* Share */}
         <button className="absolute top-6 right-6 flex h-9 w-9 items-center justify-center rounded-full bg-background/60 backdrop-blur-sm border border-border/50 text-foreground hover:bg-background/80 transition-colors">
           <Share2 className="h-4 w-4" />
         </button>
@@ -72,7 +123,6 @@ const CreatorProfile = () => {
       <div className="container max-w-6xl">
         {/* Profile header */}
         <div className="relative -mt-20 mb-8 flex flex-col md:flex-row md:items-end gap-6 md:gap-8">
-          {/* Avatar */}
           <div className="relative flex-shrink-0">
             <div className="h-32 w-32 rounded-2xl border-4 border-background overflow-hidden bg-muted ring-2 ring-primary/40 shadow-glow">
               <img src={creator.avatar} alt={creator.name} className="h-full w-full object-cover" />
@@ -84,7 +134,6 @@ const CreatorProfile = () => {
             )}
           </div>
 
-          {/* Info */}
           <div className="flex-1 md:pb-2">
             <div className="flex flex-wrap items-start gap-3 mb-2">
               <div>
@@ -93,12 +142,13 @@ const CreatorProfile = () => {
                 </h1>
                 <p className="text-muted-foreground text-sm">@{creator.handle}</p>
               </div>
-              <span className="mt-1 rounded-full bg-primary/10 border border-primary/20 px-3 py-0.5 text-xs font-medium text-primary">
-                {creator.category}
-              </span>
+              {creator.category && (
+                <span className="mt-1 rounded-full bg-primary/10 border border-primary/20 px-3 py-0.5 text-xs font-medium text-primary">
+                  {creator.category}
+                </span>
+              )}
             </div>
 
-            {/* Stats */}
             <div className="flex flex-wrap gap-5 text-sm">
               <div className="flex items-center gap-1.5 text-muted-foreground">
                 <Users className="h-4 w-4 text-primary" />
@@ -114,7 +164,6 @@ const CreatorProfile = () => {
             </div>
           </div>
 
-          {/* Actions */}
           <div className="flex gap-3 md:pb-2">
             <button
               onClick={() => setLiked(!liked)}
@@ -135,7 +184,6 @@ const CreatorProfile = () => {
         <div className="grid md:grid-cols-[1fr_340px] gap-8">
           {/* Left — Posts */}
           <div>
-            {/* Tabs */}
             <div className="flex gap-1 mb-6 rounded-xl bg-muted p-1 w-fit">
               {postTypes.map((t) => (
                 <button
@@ -152,7 +200,6 @@ const CreatorProfile = () => {
               ))}
             </div>
 
-            {/* Grid of posts */}
             <div className="grid grid-cols-3 gap-2">
               {lockedPosts.map((post) => (
                 <div
@@ -161,7 +208,6 @@ const CreatorProfile = () => {
                 >
                   {post.locked ? (
                     <>
-                      {/* Blurred placeholder */}
                       <div className="h-full w-full bg-gradient-to-br from-muted to-secondary blur-sm" />
                       <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
                         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-background/70 backdrop-blur-sm border border-border/60">
@@ -196,7 +242,7 @@ const CreatorProfile = () => {
             <h2 className="font-display text-lg font-bold text-foreground">Planos de assinatura</h2>
 
             {plans.map((plan, i) => {
-              const price = (creator.price * plan.multiplier).toFixed(2).replace(".", ",");
+              const price = plan.price.toFixed(2).replace(".", ",");
               return (
                 <div
                   key={plan.name}
@@ -239,9 +285,13 @@ const CreatorProfile = () => {
               );
             })}
 
-            <button className="w-full rounded-2xl bg-gradient-primary py-4 font-display font-bold text-primary-foreground shadow-glow transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_8px_30px_hsl(340_80%_58%_/_0.5)]">
-              Assinar por R${" "}
-              {(creator.price * plans[selectedPlan].multiplier).toFixed(2).replace(".", ",")}/mês
+            <button
+              onClick={handleSubscribe}
+              className="w-full rounded-2xl bg-gradient-primary py-4 font-display font-bold text-primary-foreground shadow-glow transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_8px_30px_hsl(340_80%_58%_/_0.5)]"
+            >
+              {isSubscribed
+                ? "Já assinado ✓"
+                : `Assinar por R$ ${plans[selectedPlan].price.toFixed(2).replace(".", ",")}/mês`}
             </button>
 
             <p className="text-center text-xs text-muted-foreground">
@@ -251,7 +301,6 @@ const CreatorProfile = () => {
         </div>
       </div>
 
-      {/* Footer spacing */}
       <div className="h-24" />
     </div>
   );

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import {
   DollarSign, Users, FileImage, Star, TrendingUp, Upload, Bell, Settings,
@@ -10,6 +10,11 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts";
 import { mockCreators } from "@/data/creators";
+import { useDashboardStats } from "@/hooks/useDashboardStats";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { Textarea } from "@/components/ui/textarea";
 
 const revenueData = [
   { month: "Set", value: 3200 },
@@ -20,14 +25,6 @@ const revenueData = [
   { month: "Fev", value: 6100 },
 ];
 
-const recentSubscribers = [
-  { name: "Mariana A.", avatar: mockCreators[1].avatar, plan: "Super Fã", since: "há 2h" },
-  { name: "Carolina P.", avatar: mockCreators[3].avatar, plan: "VIP", since: "há 5h" },
-  { name: "Beatriz S.", avatar: mockCreators[5].avatar, plan: "Fã", since: "há 1d" },
-  { name: "Larissa M.", avatar: mockCreators[7].avatar, plan: "Super Fã", since: "há 2d" },
-  { name: "Amanda F.", avatar: mockCreators[2].avatar, plan: "Fã", since: "há 3d" },
-];
-
 const planColors: Record<string, string> = {
   "Fã": "bg-muted/50 text-muted-foreground",
   "Super Fã": "bg-primary/20 text-primary",
@@ -35,12 +32,31 @@ const planColors: Record<string, string> = {
 };
 
 const Dashboard = () => {
+  const { profile, user } = useAuth();
+  const { data: dashStats } = useDashboardStats();
   const [uploadHover, setUploadHover] = useState(false);
+  const [postText, setPostText] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const displayName = profile?.name || "Criador";
+
+  const mockRecentSubscribers = [
+    { name: "Mariana A.", avatar: mockCreators[1].avatar, plan: "Super Fã", since: "há 2h" },
+    { name: "Carolina P.", avatar: mockCreators[3].avatar, plan: "VIP", since: "há 5h" },
+    { name: "Beatriz S.", avatar: mockCreators[5].avatar, plan: "Fã", since: "há 1d" },
+    { name: "Larissa M.", avatar: mockCreators[7].avatar, plan: "Super Fã", since: "há 2d" },
+    { name: "Amanda F.", avatar: mockCreators[2].avatar, plan: "Fã", since: "há 3d" },
+  ];
+
+  const recentSubscribers = dashStats?.recentSubscribers?.length
+    ? dashStats.recentSubscribers
+    : mockRecentSubscribers;
 
   const stats = [
     {
       label: "Receita Mensal",
-      value: "R$ 6.100",
+      value: dashStats ? `R$ ${dashStats.revenue.toLocaleString("pt-BR")}` : "R$ 6.100",
       change: "+18%",
       up: true,
       icon: DollarSign,
@@ -48,7 +64,7 @@ const Dashboard = () => {
     },
     {
       label: "Assinantes",
-      value: "1.247",
+      value: dashStats ? dashStats.subscriberCount.toLocaleString("pt-BR") : "1.247",
       change: "+84",
       up: true,
       icon: Users,
@@ -56,7 +72,7 @@ const Dashboard = () => {
     },
     {
       label: "Posts",
-      value: "348",
+      value: dashStats ? dashStats.postCount.toString() : "348",
       change: "+12 este mês",
       up: true,
       icon: FileImage,
@@ -72,6 +88,41 @@ const Dashboard = () => {
     },
   ];
 
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop();
+      const path = `${user.id}/${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from("content")
+        .upload(path, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage.from("content").getPublicUrl(path);
+
+      const mediaType = file.type.startsWith("video") ? "video" : "image";
+      const { error: postError } = await supabase.from("posts").insert({
+        creator_id: user.id,
+        text: postText || null,
+        media_url: urlData.publicUrl,
+        media_type: mediaType,
+        min_plan: "free",
+      });
+
+      if (postError) throw postError;
+      toast.success("Conteúdo publicado com sucesso!");
+      setPostText("");
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao publicar");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -80,7 +131,7 @@ const Dashboard = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="font-display text-3xl font-bold text-foreground">
-              Olá, <span className="text-gradient">Ana Beatriz</span> 👋
+              Olá, <span className="text-gradient">{displayName}</span> 👋
             </h1>
             <p className="text-muted-foreground mt-1">Aqui está o resumo da sua conta</p>
           </div>
@@ -164,7 +215,7 @@ const Dashboard = () => {
                     <p className="text-sm font-medium text-foreground truncate">{sub.name}</p>
                     <p className="text-xs text-muted-foreground">{sub.since}</p>
                   </div>
-                  <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 flex-shrink-0 ${planColors[sub.plan]}`}>
+                  <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 flex-shrink-0 ${planColors[sub.plan] || "bg-muted/50 text-muted-foreground"}`}>
                     {sub.plan}
                   </span>
                 </div>
@@ -176,7 +227,15 @@ const Dashboard = () => {
         {/* Upload new content */}
         <div className="glass-card rounded-2xl p-6">
           <h2 className="font-semibold text-foreground mb-4">Publicar novo conteúdo</h2>
+          <Textarea
+            placeholder="Escreva uma legenda para seu post..."
+            className="bg-muted/20 border-border/50 mb-4 resize-none"
+            value={postText}
+            onChange={(e) => setPostText(e.target.value)}
+          />
+          <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleUpload} />
           <div
+            onClick={() => !uploading && fileRef.current?.click()}
             onMouseEnter={() => setUploadHover(true)}
             onMouseLeave={() => setUploadHover(false)}
             className={`border-2 border-dashed rounded-xl p-10 flex flex-col items-center gap-3 transition-colors cursor-pointer ${
@@ -187,10 +246,15 @@ const Dashboard = () => {
               <Upload className={`h-6 w-6 ${uploadHover ? "text-primary-foreground" : "text-muted-foreground"}`} />
             </div>
             <div className="text-center">
-              <p className="text-sm font-semibold text-foreground">Arraste arquivos ou clique para fazer upload</p>
+              <p className="text-sm font-semibold text-foreground">
+                {uploading ? "Enviando..." : "Arraste arquivos ou clique para fazer upload"}
+              </p>
               <p className="text-xs text-muted-foreground mt-1">Fotos e vídeos — máx. 500MB</p>
             </div>
-            <Button className="rounded-full bg-gradient-primary text-primary-foreground shadow-glow hover:scale-105 transition-transform mt-2">
+            <Button
+              disabled={uploading}
+              className="rounded-full bg-gradient-primary text-primary-foreground shadow-glow hover:scale-105 transition-transform mt-2"
+            >
               <Plus className="h-4 w-4 mr-2" />
               Selecionar arquivo
             </Button>

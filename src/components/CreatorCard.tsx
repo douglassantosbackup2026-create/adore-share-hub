@@ -2,13 +2,15 @@ import { Link } from "react-router-dom";
 import { Heart, Lock, Star } from "lucide-react";
 
 export interface Creator {
-  id: number;
+  id: number | string;
   name: string;
-  handle: string;
+  handle: string | null;
   avatar: string;
   cover: string;
+  avatar_url?: string | null;
+  cover_url?: string | null;
   price: number;
-  category: string;
+  category: string | null;
   subscribers: number;
   posts: number;
   rating: number;

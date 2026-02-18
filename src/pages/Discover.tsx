@@ -3,6 +3,7 @@ import { Search, SlidersHorizontal, Flame } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import CreatorCard from "@/components/CreatorCard";
 import mockCreators from "@/data/creators";
+import { useCreators } from "@/hooks/useCreators";
 
 const categories = ["Todos", "Fitness", "Arte", "Gastronomia", "Música", "Educação", "Lifestyle", "Moda", "Gaming"];
 
@@ -11,11 +12,14 @@ const Discover = () => {
   const [activeCategory, setActiveCategory] = useState("Todos");
   const [sortBy, setSortBy] = useState<"popular" | "preco" | "novo">("popular");
 
-  const filtered = mockCreators
+  const { data: realCreators } = useCreators();
+  const creators = realCreators?.length ? realCreators : mockCreators;
+
+  const filtered = creators
     .filter((c) => {
       const matchSearch =
         c.name.toLowerCase().includes(search.toLowerCase()) ||
-        c.handle.toLowerCase().includes(search.toLowerCase());
+        (c.handle ?? "").toLowerCase().includes(search.toLowerCase());
       const matchCategory =
         activeCategory === "Todos" || c.category === activeCategory;
       return matchSearch && matchCategory;
@@ -23,7 +27,7 @@ const Discover = () => {
     .sort((a, b) => {
       if (sortBy === "popular") return b.subscribers - a.subscribers;
       if (sortBy === "preco") return a.price - b.price;
-      return b.id - a.id;
+      return 0;
     });
 
   return (
@@ -42,7 +46,7 @@ const Discover = () => {
             Encontre seus criadores favoritos
           </h1>
           <p className="text-muted-foreground">
-            {mockCreators.length} criadores ativos na plataforma
+            {creators.length} criadores ativos na plataforma
           </p>
         </div>
       </div>
