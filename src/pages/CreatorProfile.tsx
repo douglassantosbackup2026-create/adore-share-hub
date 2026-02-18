@@ -1,4 +1,4 @@
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { Heart, Star, Lock, MessageCircle, Share2, ChevronLeft, Check, Zap, Users, UserPlus, UserCheck } from "lucide-react";
 import Navbar from "@/components/Navbar";
@@ -42,9 +42,10 @@ const postTypes = ["Todos", "Fotos", "Vídeos", "Lives"];
 
 const CreatorProfile = () => {
   const { id } = useParams();
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
   
-  const { profile: realProfile, plans: realPlans, posts: realPosts, subscriberCount } = useCreatorProfile(id);
+  const { profile: realProfile, plans: realPlans, posts: realPosts, subscriberCount } = useCreatorProfile(id, user);
   const { isSubscribed, subscribe } = useSubscription(id);
   const { isFollowing, followersCount, toggle: toggleFollow, isPending: followPending } = useFollow(id);
 
@@ -108,6 +109,18 @@ const CreatorProfile = () => {
     mediaUrl: post.media_url,
     minPlan: post.min_plan,
   }));
+
+  const handleLockedPostClick = () => {
+    if (!user) {
+      toast.info("Crie uma conta para acessar conteúdo exclusivo");
+      navigate("/signup");
+      return;
+    }
+    if (!isSubscribed) {
+      setSelectedPlan(0);
+      setPixModalOpen(true);
+    }
+  };
 
   const handleSubscribe = () => {
     if (!user) {
@@ -241,7 +254,14 @@ const CreatorProfile = () => {
               ))}
             </div>
 
-            {!user ? (
+            {authLoading ? (
+              /* Auth still hydrating — render nothing to avoid flash */
+              <div className="grid grid-cols-3 gap-2 select-none pointer-events-none opacity-20">
+                {Array.from({ length: 9 }).map((_, i) => (
+                  <div key={i} className="aspect-square rounded-xl bg-muted border border-border/40 animate-pulse" />
+                ))}
+              </div>
+            ) : !user ? (
               /* Unauthenticated: show signup gate over placeholder grid */
               <div className="relative">
                 <div className="grid grid-cols-3 gap-2 select-none pointer-events-none opacity-40 blur-[2px]">
@@ -277,6 +297,7 @@ const CreatorProfile = () => {
                 {displayPosts.map((post) => (
                   <div
                     key={post.id}
+                    onClick={post.locked ? handleLockedPostClick : undefined}
                     className="group relative aspect-square rounded-xl overflow-hidden bg-muted border border-border/40 cursor-pointer"
                   >
                     {post.locked ? (

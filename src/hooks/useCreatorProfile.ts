@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { User } from "@supabase/supabase-js";
 
-export function useCreatorProfile(creatorId: string | undefined) {
+export function useCreatorProfile(creatorId: string | undefined, user?: User | null) {
   const profileQuery = useQuery({
     queryKey: ["creatorProfile", creatorId],
     enabled: !!creatorId,
@@ -32,7 +33,7 @@ export function useCreatorProfile(creatorId: string | undefined) {
 
   const postsQuery = useQuery({
     queryKey: ["creatorPosts", creatorId],
-    enabled: !!creatorId,
+    enabled: !!creatorId && !!user,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("posts")
