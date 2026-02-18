@@ -308,11 +308,35 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_ban_user: { Args: { p_user_id: string }; Returns: undefined }
+      admin_delete_post: { Args: { p_post_id: string }; Returns: undefined }
+      get_admin_creator_stats: {
+        Args: never
+        Returns: {
+          active_subs: number
+          creator_category: string
+          creator_handle: string
+          creator_id: string
+          creator_name: string
+          estimated_revenue: number
+          post_count: number
+        }[]
+      }
       get_creator_monthly_revenue: {
         Args: { p_creator_id: string }
         Returns: {
           month: string
           value: number
+        }[]
+      }
+      get_platform_stats: {
+        Args: never
+        Returns: {
+          estimated_revenue: number
+          total_active_subs: number
+          total_creators: number
+          total_fans: number
+          total_posts: number
         }[]
       }
       has_role: {

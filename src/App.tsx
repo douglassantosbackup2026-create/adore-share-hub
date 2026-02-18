@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import CreatorRoute from "@/components/CreatorRoute";
+import AdminRoute from "@/components/AdminRoute";
 import Index from "./pages/Index";
 import Discover from "./pages/Discover";
 import CreatorProfile from "./pages/CreatorProfile";
@@ -18,6 +19,7 @@ import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import FanProfile from "./pages/FanProfile";
 import Onboarding from "./pages/Onboarding";
+import Admin from "./pages/Admin";
 
 const queryClient = new QueryClient();
 
@@ -40,6 +42,7 @@ const App = () => (
             <Route path="/settings" element={<CreatorRoute><Settings /></CreatorRoute>} />
             <Route path="/profile/:id" element={<FanProfile />} />
             <Route path="/onboarding" element={<CreatorRoute><Onboarding /></CreatorRoute>} />
+            <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
