@@ -5,13 +5,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 type Role = "fan" | "creator";
 
 const Signup = () => {
   const [role, setRole] = useState<Role>("fan");
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const { signUp, user } = useAuth();
+  const { toast } = useToast();
 
   const [form, setForm] = useState({
     name: "",
@@ -22,12 +27,43 @@ const Signup = () => {
     category: "",
   });
 
+  // Redirect if already logged in
+  if (user) {
+    navigate("/feed", { replace: true });
+    return null;
+  }
+
   const set = (field: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [field]: e.target.value }));
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    navigate(role === "creator" ? "/dashboard" : "/feed");
+
+    if (form.password !== form.confirm) {
+      toast({ title: "Senhas não coincidem", variant: "destructive" });
+      return;
+    }
+    if (form.password.length < 6) {
+      toast({ title: "Senha deve ter pelo menos 6 caracteres", variant: "destructive" });
+      return;
+    }
+
+    setIsLoading(true);
+    const metadata: Record<string, string> = { name: form.name, role };
+    if (role === "creator") {
+      metadata.handle = form.handle;
+      metadata.category = form.category;
+    }
+
+    const { error } = await signUp(form.email, form.password, metadata);
+    setIsLoading(false);
+
+    if (error) {
+      toast({ title: "Erro ao criar conta", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Conta criada!", description: "Verifique seu e-mail para confirmar o cadastro." });
+      navigate("/login");
+    }
   };
 
   const categories = ["Fitness", "Arte", "Gastronomia", "Música", "Educação", "Lifestyle", "Moda", "Gaming"];
@@ -39,7 +75,6 @@ const Signup = () => {
       </div>
 
       <div className="relative w-full max-w-md px-6 flex flex-col items-center gap-8">
-        {/* Logo */}
         <Link to="/" className="flex items-center gap-2">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-primary shadow-glow animate-pulse-glow">
             <Flame className="h-5 w-5 text-primary-foreground" />
@@ -53,7 +88,6 @@ const Signup = () => {
             <p className="text-sm text-muted-foreground mt-1">Junte-se à Flare hoje</p>
           </div>
 
-          {/* Role tabs */}
           <div className="flex rounded-xl border border-border/50 bg-muted/20 p-1 gap-1">
             {(["fan", "creator"] as Role[]).map((r) => (
               <button
@@ -73,7 +107,6 @@ const Signup = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            {/* Nome */}
             <div className="flex flex-col gap-2">
               <Label htmlFor="name">Nome completo</Label>
               <div className="relative">
@@ -82,7 +115,6 @@ const Signup = () => {
               </div>
             </div>
 
-            {/* E-mail */}
             <div className="flex flex-col gap-2">
               <Label htmlFor="email">E-mail</Label>
               <div className="relative">
@@ -91,7 +123,6 @@ const Signup = () => {
               </div>
             </div>
 
-            {/* Campos extras para criadores */}
             {role === "creator" && (
               <>
                 <div className="flex flex-col gap-2">
@@ -120,7 +151,6 @@ const Signup = () => {
               </>
             )}
 
-            {/* Senha */}
             <div className="flex flex-col gap-2">
               <Label htmlFor="password">Senha</Label>
               <div className="relative">
@@ -128,7 +158,7 @@ const Signup = () => {
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
-                  placeholder="Mínimo 8 caracteres"
+                  placeholder="Mínimo 6 caracteres"
                   className="pl-9 pr-10 bg-muted/20 border-border/50"
                   value={form.password}
                   onChange={set("password")}
@@ -140,7 +170,6 @@ const Signup = () => {
               </div>
             </div>
 
-            {/* Confirmar senha */}
             <div className="flex flex-col gap-2">
               <Label htmlFor="confirm">Confirmar senha</Label>
               <div className="relative">
@@ -149,8 +178,12 @@ const Signup = () => {
               </div>
             </div>
 
-            <Button type="submit" className="w-full rounded-xl bg-gradient-primary text-primary-foreground font-semibold shadow-glow hover:scale-[1.02] transition-transform h-11 mt-2">
-              Criar conta
+            <Button
+              type="submit"
+              disabled={isLoading}
+              className="w-full rounded-xl bg-gradient-primary text-primary-foreground font-semibold shadow-glow hover:scale-[1.02] transition-transform h-11 mt-2"
+            >
+              {isLoading ? "Criando conta..." : "Criar conta"}
             </Button>
           </form>
 
