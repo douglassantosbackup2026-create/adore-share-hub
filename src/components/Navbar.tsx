@@ -1,10 +1,25 @@
 import { Link, useLocation } from "react-router-dom";
 import { useState } from "react";
-import { Menu, X, Flame, Search, Bell, User } from "lucide-react";
+import { Menu, X, Flame, Search, Bell, User, LayoutDashboard, MessageCircle, Rss, LogOut } from "lucide-react";
 
 const Navbar = () => {
   const [open, setOpen] = useState(false);
+  // Simulate logged-in state — toggle for demo
+  const [loggedIn, setLoggedIn] = useState(false);
   const { pathname } = useLocation();
+
+  const guestLinks = [
+    { label: "Início", to: "/" },
+    { label: "Descobrir", to: "/discover" },
+  ];
+
+  const authLinks = [
+    { label: "Feed", to: "/feed", icon: Rss },
+    { label: "Mensagens", to: "/messages", icon: MessageCircle },
+    { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
+  ];
+
+  const navLinks = loggedIn ? authLinks : guestLinks;
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
@@ -21,10 +36,7 @@ const Navbar = () => {
 
         {/* Desktop Nav */}
         <nav className="hidden md:flex items-center gap-8">
-          {[
-            { label: "Início", to: "/" },
-            { label: "Descobrir", to: "/discover" },
-          ].map(({ label, to }) => (
+          {navLinks.map(({ label, to }) => (
             <Link
               key={to}
               to={to}
@@ -44,16 +56,47 @@ const Navbar = () => {
           <button className="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 text-muted-foreground transition-colors hover:text-foreground hover:border-primary/50">
             <Search className="h-4 w-4" />
           </button>
-          <button className="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 text-muted-foreground transition-colors hover:text-foreground hover:border-primary/50">
-            <Bell className="h-4 w-4" />
-          </button>
-          <Link
-            to="/discover"
-            className="flex items-center gap-2 rounded-full bg-gradient-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-glow transition-all duration-300 hover:scale-105 hover:shadow-[0_4px_20px_hsl(340_80%_58%_/_0.5)]"
-          >
-            <User className="h-3.5 w-3.5" />
-            Entrar
-          </Link>
+
+          {loggedIn ? (
+            <>
+              <Link
+                to="/messages"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 text-muted-foreground transition-colors hover:text-foreground hover:border-primary/50"
+              >
+                <Bell className="h-4 w-4" />
+              </Link>
+              <Link
+                to="/settings"
+                className="h-9 w-9 rounded-full bg-gradient-primary shadow-glow flex items-center justify-center hover:scale-105 transition-transform"
+              >
+                <User className="h-4 w-4 text-primary-foreground" />
+              </Link>
+              <button
+                onClick={() => setLoggedIn(false)}
+                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <LogOut className="h-4 w-4" />
+                Sair
+              </button>
+            </>
+          ) : (
+            <>
+              <Link
+                to="/login"
+                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Entrar
+              </Link>
+              {/* Demo: click to simulate login */}
+              <button
+                onClick={() => setLoggedIn(true)}
+                className="flex items-center gap-2 rounded-full bg-gradient-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-glow transition-all duration-300 hover:scale-105 hover:shadow-[0_4px_20px_hsl(340_80%_58%_/_0.5)]"
+              >
+                <User className="h-3.5 w-3.5" />
+                Criar conta
+              </button>
+            </>
+          )}
         </div>
 
         {/* Mobile toggle */}
@@ -68,15 +111,27 @@ const Navbar = () => {
       {/* Mobile menu */}
       {open && (
         <div className="md:hidden border-t border-border/50 bg-background/95 backdrop-blur-xl px-6 py-4 flex flex-col gap-4">
-          <Link to="/" onClick={() => setOpen(false)} className="text-sm font-medium text-foreground">Início</Link>
-          <Link to="/discover" onClick={() => setOpen(false)} className="text-sm font-medium text-foreground">Descobrir</Link>
-          <Link
-            to="/discover"
-            onClick={() => setOpen(false)}
-            className="flex items-center justify-center gap-2 rounded-full bg-gradient-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
-          >
-            Entrar na plataforma
-          </Link>
+          {navLinks.map(({ label, to }) => (
+            <Link key={to} to={to} onClick={() => setOpen(false)} className="text-sm font-medium text-foreground">{label}</Link>
+          ))}
+          <div className="flex flex-col gap-2 pt-2 border-t border-border/50">
+            {loggedIn ? (
+              <>
+                <Link to="/settings" onClick={() => setOpen(false)} className="text-sm font-medium text-foreground">Configurações</Link>
+                <button onClick={() => { setLoggedIn(false); setOpen(false); }} className="text-sm text-left font-medium text-muted-foreground">Sair</button>
+              </>
+            ) : (
+              <>
+                <Link to="/login" onClick={() => setOpen(false)} className="text-sm font-medium text-foreground">Entrar</Link>
+                <button
+                  onClick={() => { setLoggedIn(true); setOpen(false); }}
+                  className="flex items-center justify-center gap-2 rounded-full bg-gradient-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+                >
+                  Criar conta
+                </button>
+              </>
+            )}
+          </div>
         </div>
       )}
     </header>
