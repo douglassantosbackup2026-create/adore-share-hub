@@ -1,177 +1,159 @@
 
+# Fase 3 — Conectar Paginas ao Banco de Dados
 
-# Flare — Backend Completo com Lovable Cloud
-
-## Objetivo
-Transformar o protótipo visual em uma plataforma funcional com autenticação real, banco de dados persistente e storage para arquivos.
-
----
-
-## Fase 1: Ativar Lovable Cloud e Banco de Dados
-
-### Tabelas a criar
-
-**profiles** — dados do perfil do usuário
-| Coluna | Tipo | Notas |
-|---|---|---|
-| id | uuid (PK, FK -> auth.users) | ON DELETE CASCADE |
-| role | text ('fan' ou 'creator') | NOT NULL |
-| name | text | NOT NULL |
-| handle | text | UNIQUE, obrigatório para criadores |
-| bio | text | Opcional |
-| avatar_url | text | URL do storage |
-| cover_url | text | URL do storage |
-| category | text | Para criadores (Fitness, Arte, etc.) |
-| social_links | jsonb | Instagram, Twitter, etc. |
-| created_at | timestamptz | default now() |
-
-**user_roles** — tabela separada de roles (seguranca)
-| Coluna | Tipo | Notas |
-|---|---|---|
-| id | uuid (PK) | |
-| user_id | uuid (FK -> auth.users) | ON DELETE CASCADE |
-| role | app_role (enum) | 'admin', 'moderator', 'user' |
-
-**posts** — conteudo dos criadores
-| Coluna | Tipo | Notas |
-|---|---|---|
-| id | uuid (PK) | |
-| creator_id | uuid (FK -> profiles) | ON DELETE CASCADE |
-| text | text | Legenda do post |
-| media_url | text | URL do storage |
-| media_type | text | 'image' ou 'video' |
-| min_plan | text | 'free', 'fan', 'superfan', 'vip' |
-| likes_count | integer | default 0 |
-| created_at | timestamptz | |
-
-**subscriptions** — assinaturas ativas
-| Coluna | Tipo | Notas |
-|---|---|---|
-| id | uuid (PK) | |
-| fan_id | uuid (FK -> profiles) | ON DELETE CASCADE |
-| creator_id | uuid (FK -> profiles) | ON DELETE CASCADE |
-| plan | text | 'fan', 'superfan', 'vip' |
-| active | boolean | default true |
-| created_at | timestamptz | |
-| UNIQUE | (fan_id, creator_id) | |
-
-**messages** — mensagens diretas
-| Coluna | Tipo | Notas |
-|---|---|---|
-| id | uuid (PK) | |
-| sender_id | uuid (FK -> profiles) | |
-| receiver_id | uuid (FK -> profiles) | |
-| text | text | NOT NULL |
-| read | boolean | default false |
-| created_at | timestamptz | |
-
-**creator_plans** — precos dos planos por criador
-| Coluna | Tipo | Notas |
-|---|---|---|
-| id | uuid (PK) | |
-| creator_id | uuid (FK -> profiles) | ON DELETE CASCADE |
-| plan_name | text | 'fan', 'superfan', 'vip' |
-| price | decimal | em reais |
-| UNIQUE | (creator_id, plan_name) | |
-
-### Storage Buckets
-- **avatars** — bucket publico para fotos de perfil
-- **covers** — bucket publico para capas
-- **content** — bucket privado para fotos/videos de posts
-
-### RLS (Row Level Security)
-- **profiles**: SELECT publico (para exibir perfis), UPDATE apenas pelo proprio usuario
-- **posts**: SELECT publico para posts free; SELECT condicional baseado em assinatura para posts pagos
-- **subscriptions**: SELECT/INSERT pelo fan, SELECT pelo creator
-- **messages**: SELECT/INSERT apenas pelos participantes da conversa
-- **creator_plans**: SELECT publico, UPDATE/INSERT apenas pelo criador
-- **user_roles**: politicas com funcao security definer `has_role()`
-
-### Trigger
-- Trigger `on_auth_user_created` que cria automaticamente um registro em `profiles` com os dados do signup (nome, role, handle, categoria)
+## Resumo
+Substituir todos os dados mock por queries reais ao banco, manter os mocks como fallback quando o banco estiver vazio, e adicionar funcionalidades de escrita (upload, assinatura, mensagens em tempo real).
 
 ---
 
-## Fase 2: Autenticacao Real
+## 1. Discover — Listar criadores reais
 
-### Signup (`/signup`)
-- Chamar `supabase.auth.signUp()` com metadados extras (nome, role, handle, categoria)
-- O trigger automaticamente cria o perfil
-- Redirecionar criador para `/dashboard`, fan para `/feed`
+**Arquivo:** `src/pages/Discover.tsx`
 
-### Login (`/login`)
-- Chamar `supabase.auth.signInWithPassword()`
-- Redirecionar baseado no role do usuario
+- Buscar perfis com `role = 'creator'` da tabela `profiles`
+- Buscar o menor preco de cada criador via `creator_plans`
+- Contar posts e assinantes via queries separadas ou subqueries
+- Se o banco estiver vazio, usar `mockCreators` como fallback
+- Atualizar a interface `Creator` em `CreatorCard.tsx` para aceitar `id: string` (UUID) em vez de `number`
 
-### Contexto de autenticacao
-- Criar `src/contexts/AuthContext.tsx` com:
-  - `onAuthStateChange` listener (configurado ANTES de `getSession`)
-  - Estado global: `user`, `profile`, `loading`
-  - Funcoes: `signIn`, `signUp`, `signOut`
-- Criar `src/components/ProtectedRoute.tsx` para proteger rotas autenticadas
-
-### Atualizacao de paginas
-- **Navbar**: substituir `useState(false)` por estado real do AuthContext
-- **Feed, Messages, Dashboard, Settings**: proteger com ProtectedRoute
-- **Login/Signup**: redirecionar se ja autenticado
+**Queries:**
+- `profiles` WHERE role = 'creator'
+- `creator_plans` para preco minimo
+- `posts` count por creator_id
+- `subscriptions` count (active) por creator_id
 
 ---
 
-## Fase 3: Conectar Paginas ao Banco
+## 2. CreatorProfile — Perfil real + Assinatura
 
-### Feed
-- Buscar posts reais com join em profiles
-- Verificar assinatura do usuario para mostrar/esconder conteudo bloqueado
+**Arquivo:** `src/pages/CreatorProfile.tsx`
 
-### Messages
-- Buscar conversas reais do banco
-- Enviar mensagens com INSERT
-- Subscription em tempo real para novas mensagens
+- Buscar perfil pelo `id` (UUID) ou `handle` da URL
+- Buscar posts reais do criador (respeitando RLS — posts free ficam visiveis, pagos so com assinatura)
+- Buscar planos reais de `creator_plans`
+- Verificar se o usuario logado ja assina o criador
+- Botao "Assinar" cria registro em `subscriptions` com o plano selecionado
+- Exibir media_url real nos posts (imagens do storage)
 
-### Dashboard
-- Buscar stats reais: contagem de assinantes, posts, receita
-- Upload real de conteudo via Storage API
-- Listar ultimos assinantes do banco
-
-### Settings
-- Carregar e salvar perfil real (nome, bio, avatar, redes sociais)
-- Upload de avatar/capa via Storage
-- Atualizar precos dos planos na tabela `creator_plans`
-
-### CreatorProfile
-- Buscar perfil e posts reais do banco
-- Verificar se o usuario ja assina o criador
-- Botao de assinar cria registro em `subscriptions`
+**Mudancas:**
+- Rota muda de `/creator/:id` (numerico) para aceitar UUID
+- Fallback para mock se perfil nao encontrado no banco
 
 ---
 
-## Arquivos a criar/modificar
+## 3. Feed — Posts reais com controle de acesso
 
-| Arquivo | Acao |
+**Arquivo:** `src/pages/Feed.tsx`
+
+- Buscar posts com join em `profiles` (nome, avatar, handle do criador)
+- RLS ja controla visibilidade: posts free aparecem para todos, pagos so para assinantes
+- Posts bloqueados (que o RLS nao retorna) podem ser exibidos com blur usando uma query separada que retorna apenas metadados
+- Like: incrementar `likes_count` no banco
+- Stories: buscar criadores que o usuario segue (assinaturas ativas)
+- Sidebar "Sugestoes": criadores que o usuario NAO segue
+
+---
+
+## 4. Messages — Chat real + Realtime
+
+**Arquivo:** `src/pages/Messages.tsx`
+
+- Buscar conversas agrupando mensagens por remetente/destinatario
+- Listar contatos com ultima mensagem e contagem de nao lidas
+- Enviar mensagem: INSERT na tabela `messages` com `sender_id = auth.uid()`
+- Marcar como lida: UPDATE `read = true` quando abrir conversa
+- Realtime: `supabase.channel('messages')` para receber novas mensagens em tempo real
+- Join com `profiles` para exibir nome e avatar
+
+---
+
+## 5. Dashboard — Stats reais + Upload
+
+**Arquivo:** `src/pages/Dashboard.tsx`
+
+- Stats reais:
+  - Receita: soma dos precos das assinaturas ativas do criador
+  - Assinantes: count de subscriptions ativas
+  - Posts: count de posts do criador
+- Upload de conteudo:
+  - Usar `supabase.storage.from('content').upload()` para arquivos
+  - Criar registro em `posts` com a URL retornada
+- Novos assinantes: buscar ultimas subscriptions com join em profiles
+- Grafico de receita: manter mock por enquanto (dados historicos precisariam de tabela de transacoes)
+
+---
+
+## 6. Settings — Salvar perfil real
+
+**Arquivo:** `src/pages/Settings.tsx`
+
+- Carregar perfil do usuario logado via `AuthContext`
+- Salvar alteracoes: UPDATE em `profiles` (nome, handle, bio, social_links)
+- Upload de avatar: `supabase.storage.from('avatars').upload()` + update `avatar_url`
+- Upload de capa: `supabase.storage.from('covers').upload()` + update `cover_url`
+- Salvar planos: UPSERT em `creator_plans` (apenas para criadores)
+- Alterar senha: `supabase.auth.updateUser({ password })`
+
+---
+
+## 7. CreatorCard — Adaptar para dados reais
+
+**Arquivo:** `src/components/CreatorCard.tsx`
+
+- Mudar interface `Creator` para aceitar `id: string` (UUID)
+- Ajustar Link para usar UUID
+- Campos como `subscribers`, `posts`, `rating` virao das queries ou serao calculados
+- Manter compatibilidade com mocks (campos opcionais com defaults)
+
+---
+
+## Detalhes Tecnicos
+
+### Tipo Profile reutilizavel
+Criar `src/types/profile.ts` com interface unificada que mapeia a tabela `profiles` e dados agregados (subscriber count, post count, price).
+
+### Hooks customizados
+Criar hooks com React Query para reutilizar queries:
+- `useCreators()` — lista criadores com stats agregados
+- `useCreatorProfile(id)` — perfil completo de um criador
+- `usePosts(creatorId?)` — posts com filtros
+- `useConversations()` — lista de conversas do usuario
+- `useMessages(contactId)` — mensagens de uma conversa
+- `useDashboardStats()` — stats do dashboard
+- `useSubscription(creatorId)` — verifica assinatura ativa
+
+### Realtime (Messages)
+- Usar `supabase.channel()` com `postgres_changes` na tabela messages
+- A tabela `messages` ja esta habilitada para realtime (migration anterior)
+
+### Storage RLS
+- Verificar se os buckets `avatars`, `covers`, `content` tem policies de upload configuradas
+- Se nao, criar migration para adicionar policies de storage
+
+### Arquivos a criar
+| Arquivo | Descricao |
 |---|---|
-| `src/integrations/supabase/` | Gerado automaticamente pelo Lovable Cloud |
-| `src/contexts/AuthContext.tsx` | Novo — contexto de autenticacao |
-| `src/components/ProtectedRoute.tsx` | Novo — wrapper de rota protegida |
-| `src/pages/Login.tsx` | Modificar — usar supabase auth |
-| `src/pages/Signup.tsx` | Modificar — usar supabase auth com metadados |
-| `src/pages/Feed.tsx` | Modificar — buscar posts reais |
-| `src/pages/Messages.tsx` | Modificar — mensagens reais + realtime |
-| `src/pages/Dashboard.tsx` | Modificar — dados reais + upload |
-| `src/pages/Settings.tsx` | Modificar — salvar perfil real |
-| `src/pages/CreatorProfile.tsx` | Modificar — dados reais + assinatura |
-| `src/components/Navbar.tsx` | Modificar — usar AuthContext |
-| `src/App.tsx` | Modificar — wrapping com AuthProvider + ProtectedRoute |
+| `src/types/profile.ts` | Tipos compartilhados |
+| `src/hooks/useCreators.ts` | Hook para listar criadores |
+| `src/hooks/useCreatorProfile.ts` | Hook para perfil individual |
+| `src/hooks/usePosts.ts` | Hook para posts |
+| `src/hooks/useConversations.ts` | Hook para conversas |
+| `src/hooks/useMessages.ts` | Hook para mensagens + realtime |
+| `src/hooks/useDashboardStats.ts` | Hook para stats do dashboard |
+| `src/hooks/useSubscription.ts` | Hook para verificar/criar assinatura |
 
----
+### Arquivos a modificar
+| Arquivo | Mudanca |
+|---|---|
+| `src/pages/Discover.tsx` | Usar `useCreators()` |
+| `src/pages/CreatorProfile.tsx` | Usar hooks reais + botao assinar funcional |
+| `src/pages/Feed.tsx` | Usar `usePosts()` + like real |
+| `src/pages/Messages.tsx` | Usar hooks de mensagens + realtime |
+| `src/pages/Dashboard.tsx` | Usar stats reais + upload funcional |
+| `src/pages/Settings.tsx` | Usar AuthContext + salvar no banco |
+| `src/components/CreatorCard.tsx` | Adaptar interface para UUID |
 
-## Detalhes tecnicos
-
-- Lovable Cloud sera ativado como primeiro passo (gera a integracao Supabase automaticamente)
-- Todas as migrations serao criadas via ferramenta de migracao do Lovable
-- Dados mock em `src/data/creators.ts` serao mantidos como fallback mas substituidos por queries reais
-- Funcao `has_role()` com SECURITY DEFINER para evitar recursao infinita em RLS
-- Tipo enum `app_role` para roles administrativos (separado do campo `role` em profiles que e fan/creator)
-- Storage com buckets publicos para avatars/covers e privado para conteudo
-- `onAuthStateChange` configurado ANTES de `getSession()` no AuthContext
-- Signup usa `emailRedirectTo: window.location.origin`
-
+### Migration necessaria
+- Adicionar policies de storage para upload nos buckets (avatars, covers, content)
+- Usuarios autenticados podem fazer upload no bucket de avatars/covers para seu proprio path
+- Criadores podem fazer upload no bucket content
