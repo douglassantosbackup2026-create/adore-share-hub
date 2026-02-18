@@ -7,6 +7,8 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { sendMetaEvent } from "@/lib/metaCapi";
+import { PixPaymentModal } from "@/components/PixPaymentModal";
+
 
 const defaultPlans = [
   {
@@ -47,6 +49,7 @@ const CreatorProfile = () => {
   const [activeTab, setActiveTab] = useState("Todos");
   const [liked, setLiked] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(0);
+  const [pixModalOpen, setPixModalOpen] = useState(false);
 
   // Fire ViewContent when profile is loaded
   useEffect(() => {
@@ -101,7 +104,7 @@ const CreatorProfile = () => {
     type: i % 3 === 0 ? "video" : "photo",
   }));
 
-  const handleSubscribe = async () => {
+  const handleSubscribe = () => {
     if (!user) {
       toast.error("Faça login para assinar");
       return;
@@ -116,18 +119,7 @@ const CreatorProfile = () => {
       value: plans[selectedPlan].price,
       currency: "BRL",
     });
-    try {
-      await subscribe.mutateAsync(plans[selectedPlan].name);
-      sendMetaEvent({
-        event_name: "Purchase",
-        user_email: user.email,
-        value: plans[selectedPlan].price,
-        currency: "BRL",
-      });
-      toast.success("Assinatura realizada com sucesso!");
-    } catch {
-      toast.error("Erro ao assinar. Tente novamente.");
-    }
+    setPixModalOpen(true);
   };
 
   return (
@@ -331,6 +323,22 @@ const CreatorProfile = () => {
       </div>
 
       <div className="h-24" />
+
+      {user && (
+        <PixPaymentModal
+          open={pixModalOpen}
+          onClose={() => setPixModalOpen(false)}
+          onSuccess={() => {
+            // Subscription query will update via polling in modal
+          }}
+          creatorId={id!}
+          creatorName={creator.name}
+          planName={plans[selectedPlan].name}
+          amount={plans[selectedPlan].price}
+          fanId={user.id}
+          fanEmail={user.email ?? ""}
+        />
+      )}
     </div>
   );
 };
