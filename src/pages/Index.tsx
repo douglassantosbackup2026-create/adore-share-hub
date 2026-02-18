@@ -2,9 +2,8 @@ import { Link } from "react-router-dom";
 import { ArrowRight, Shield, Zap, TrendingUp, Users, Lock, Star } from "lucide-react";
 import heroBg from "@/assets/hero-bg.jpg";
 import CreatorCard from "@/components/CreatorCard";
-import mockCreators from "@/data/creators";
 import Navbar from "@/components/Navbar";
-import { useCreators } from "@/hooks/useCreators";
+import { useFeaturedCreators } from "@/hooks/useFeaturedCreators";
 
 const stats = [
   { value: "2M+", label: "Criadores ativos" },
@@ -47,10 +46,7 @@ const features = [
 ];
 
 const Index = () => {
-  const { data: realCreators } = useCreators();
-  const featured = realCreators?.length
-    ? [...realCreators].sort((a, b) => b.subscribers - a.subscribers).slice(0, 4)
-    : mockCreators.slice(0, 4);
+  const { data: featured = [] } = useFeaturedCreators();
 
   return (
     <div className="min-h-screen bg-background">
@@ -120,7 +116,7 @@ const Index = () => {
       </section>
 
       {/* Featured Creators */}
-      <section className="py-24 container">
+      {featured.length > 0 && <section className="py-24 container">
         <div className="flex items-end justify-between mb-12">
           <div>
             <p className="text-sm font-medium text-primary mb-2">Em destaque</p>
@@ -156,7 +152,7 @@ const Index = () => {
             Ver todos os criadores <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
-      </section>
+      </section>}
 
       {/* How it works */}
       <section className="py-24 relative overflow-hidden">
