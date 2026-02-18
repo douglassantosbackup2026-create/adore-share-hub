@@ -1,34 +1,111 @@
 
-# Atualizar credenciais do Meta Pixel / CAPI
+# Corrigir loop silencioso no login quando perfil não existe
 
-## O que muda
+## Diagnóstico
 
-Duas credenciais precisam ser atualizadas:
+O login está **funcionando corretamente** (o backend retorna status 200). O problema é uma condição de guarda silenciosa no `Login.tsx`:
 
-| Campo | Valor atual | Valor novo |
-|---|---|---|
-| Pixel ID | `4384406811885630` | `1688353905856977` |
-| Token de acesso (META_CAPI_TOKEN) | token antigo (secret) | novo token fornecido |
+```ts
+// Só redireciona se AMBOS user E profile existem
+if (user && profile) {
+  navigate(...)
+}
+```
+
+O usuário `testefla@teste.com` (ID: `2380bd06-63a3-4650-82d7-76b8f4a9dbb9`) **não tem registro na tabela `profiles`**, então `profile` permanece `null` e o redirecionamento nunca ocorre — mesmo com login bem-sucedido.
+
+Isso pode acontecer com qualquer usuário criado diretamente pelo sistema de auth sem trigger de criação de perfil, ou cujo perfil foi deletado.
+
+---
+
+## Duas correções necessárias
+
+### Correção 1 — `Login.tsx`: Redirecionar com base em `user`, não em `user + profile`
+
+O redirecionamento pós-login não deve depender de `profile` existir. Em vez disso:
+- Se `user` existe mas `profile` é `null` → redirecionar para `/onboarding` (usuário precisa completar cadastro)
+- Se `user` e `profile` existem → redirecionar normalmente para `/dashboard` ou `/feed`
+
+```ts
+// ANTES (bugado):
+if (user && profile) { navigate(...) }
+
+// DEPOIS (correto):
+if (user) {
+  if (profile) {
+    navigate(profile.role === "creator" ? "/dashboard" : "/feed", { replace: true });
+  } else {
+    navigate("/onboarding", { replace: true });
+  }
+}
+```
+
+Também é necessário adicionar o `loading` do auth para evitar redirecionamento prematuro durante a hidratação:
+```ts
+if (!loading && user) { ... }
+```
+
+### Correção 2 — `AuthContext.tsx`: Criar perfil automaticamente se não existir
+
+Quando o `fetchProfile` retorna `null`, criar um perfil básico com os dados do `user.user_metadata` (que já contém `name`, `role`, `handle`, etc., definidos no momento do signup):
+
+```ts
+const fetchProfile = async (userId: string) => {
+  const { data } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .single();
+  
+  if (!data) {
+    // Perfil não existe — criar com metadados do auth
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const meta = user.user_metadata;
+      const { data: newProfile } = await supabase
+        .from("profiles")
+        .insert({
+          id: userId,
+          name: meta.name || "Usuário",
+          role: meta.role || "fan",
+          handle: meta.handle || null,
+          category: meta.category || null,
+        })
+        .select()
+        .single();
+      setProfile(newProfile);
+    }
+  } else {
+    setProfile(data);
+  }
+};
+```
 
 ---
 
 ## Arquivos alterados
 
-### 1. `supabase/functions/meta-capi/index.ts`
-- Linha 9: trocar `PIXEL_ID = "4384406811885630"` por `PIXEL_ID = "1688353905856977"`
+### 1. `src/contexts/AuthContext.tsx`
+- `fetchProfile`: verificar se `data` é `null` após a query e, se for, inserir um novo perfil com `user_metadata`
 
-### 2. Secret `META_CAPI_TOKEN`
-- Atualizar o secret com o novo token via ferramenta de secrets
-- O token nunca entra no código — fica armazenado com segurança no backend
+### 2. `src/pages/Login.tsx`
+- Trocar `if (user && profile)` por `if (!loading && user)`
+- Dentro: checar `profile` para decidir rota — se `null`, redirecionar para `/onboarding`
 
 ---
 
 ## Sequência de execução
 
 ```text
-1. Atualizar o secret META_CAPI_TOKEN com o novo token
-2. Atualizar PIXEL_ID no código da edge function
-3. Fazer redeploy da função meta-capi
+1. Atualizar src/contexts/AuthContext.tsx (auto-criar perfil se não existir)
+2. Atualizar src/pages/Login.tsx (corrigir lógica de redirecionamento)
 ```
 
-A função será reimplantada automaticamente e todos os eventos futuros (PageView, Purchase, etc.) passarão a ser enviados para o novo Pixel com o novo token.
+## Resultado esperado
+
+| Situação | Comportamento |
+|---|---|
+| Login com perfil existente (creator) | Redireciona para `/dashboard` |
+| Login com perfil existente (fan) | Redireciona para `/feed` |
+| Login sem perfil (qualquer role) | Cria perfil automaticamente e redireciona para `/onboarding` |
+| Login com erro | Exibe toast de erro, permanece na tela |
