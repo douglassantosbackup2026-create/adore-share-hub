@@ -1,73 +1,40 @@
 
-# Pop-up de Verificação de Idade na página /discover
+# Exibir criadores reais na homepage
 
-## Objetivo
+## Problema identificado
 
-Exibir um modal bloqueante na primeira visita à página `/discover` perguntando se o usuário tem 18 anos ou mais. Quem confirmar acessa normalmente; quem negar é redirecionado para a página inicial. A resposta fica salva no `localStorage` para não exibir o pop-up a cada visita.
+O hook `useCreators` aplica o filtro `.filter((p) => (postsMap.get(p.id) ?? 0) > 0)` antes de retornar os criadores. Isso é correto para o `/discover` (não faz sentido mostrar criador sem posts no grid de descoberta), mas na homepage o resultado é `[]` porque os criadores cadastrados ainda não têm posts, causando o fallback para os 8 mocks.
 
----
+A homepage (`Index.tsx`) usa exatamente esse hook e só mostra dados reais se `realCreators?.length > 0`.
 
-## Comportamento detalhado
+## O que precisa mudar
 
-### Primeira visita (sem resposta salva)
-- A página carrega normalmente por baixo (Navbar + grid de criadores)
-- Um overlay escuro com fundo desfocado (`backdrop-blur`) cobre todo o conteúdo
-- O modal aparece centralizado, não pode ser fechado clicando fora nem pressionando ESC
-- Dois botões:
-  - **"Sim, tenho 18 anos ou mais"** → fecha o modal, salva `age_verified = "true"` no `localStorage`, página fica acessível
-  - **"Não, sou menor de idade"** → redireciona para `/` (página inicial)
+### 1. Novo hook: `src/hooks/useFeaturedCreators.ts`
 
-### Visitas seguintes
-- Se `localStorage.getItem("age_verified") === "true"` → modal não aparece
+Criar um hook separado e mais simples para a homepage, que:
+- Busca todos os perfis com `role = 'creator'`
+- Busca os planos de assinatura (para o preço)
+- Busca a contagem de assinantes
+- **Nao filtra por número de posts** — mostra qualquer criador cadastrado
+- Limita a 4 resultados, ordenados por número de assinantes
 
-### Usuários já logados
-- O modal ainda aparece na primeira visita mesmo estando logado, pois a verificação de idade é independente da autenticação
+Manter o `useCreators` intacto porque a lógica de filtrar por posts é correta para o `/discover`.
 
----
+### 2. Atualizar `src/pages/Index.tsx`
 
-## O que muda
+- Substituir `useCreators` por `useFeaturedCreators`
+- Remover a importação de `mockCreators`
+- A seção "Criadores populares" só aparece se houver dados reais (`featured.length > 0`). Se não houver nenhum criador cadastrado, ocultar a seção inteira com elegância — sem mostrar mock
 
-### Novo componente: `src/components/AgeGateModal.tsx`
+### Comportamento final
 
-Um modal construído com os primitivos `Dialog` do Radix (já instalado no projeto) com:
-- Overlay com `backdrop-blur-md` sobre o conteúdo da página
-- Ícone de escudo ou cadeado (lucide-react)
-- Título: **"Verificação de idade"**
-- Subtítulo: **"Este site contém conteúdo adulto. Você confirma que tem 18 anos ou mais?"**
-- Aviso legal pequeno abaixo dos botões
-- Botão primário (gradient-primary): "Sim, tenho 18 anos ou mais"
-- Botão outline vermelho/destructive: "Não, sou menor de idade"
-- `preventClose` — desabilita o fechamento pelo `X`, clique fora e ESC
-
-### Atualização: `src/pages/Discover.tsx`
-
-- Importar o `AgeGateModal`
-- Adicionar estado `showAgeGate` inicializado com:
-  ```ts
-  useState(() => localStorage.getItem("age_verified") !== "true")
-  ```
-- Renderizar `<AgeGateModal open={showAgeGate} onConfirm={...} onDeny={...} />`
-- `onConfirm`: salva no localStorage e fecha o modal
-- `onDeny`: redireciona para `/` via `useNavigate`
-
----
-
-## Nenhuma alteração no banco de dados
-
-A verificação de idade é puramente client-side via `localStorage`. Não há necessidade de salvar no banco pois:
-- É uma proteção legal básica (honesty-based), não um controle de acesso técnico
-- O controle de acesso real ao conteúdo já está feito via RLS no banco
-
----
-
-## Sequência de execução
-
-```text
-1. Criar src/components/AgeGateModal.tsx
-2. Atualizar src/pages/Discover.tsx (importar e renderizar o modal)
-```
+| Situação | Homepage |
+|---|---|
+| Sem criadores no banco | Seção "Criadores populares" oculta |
+| 1-4 criadores sem posts | Exibe os criadores reais disponíveis |
+| 4+ criadores | Exibe os 4 mais populares (mais assinantes) |
 
 ## Arquivos alterados
 
-- **Novo**: `src/components/AgeGateModal.tsx`
-- **Atualizado**: `src/pages/Discover.tsx`
+- **Novo**: `src/hooks/useFeaturedCreators.ts`
+- **Atualizado**: `src/pages/Index.tsx` (troca de hook + remoção do fallback mock)
