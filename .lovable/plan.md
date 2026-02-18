@@ -1,35 +1,65 @@
 
-# Remover confirmação por e-mail
+# Corrigir: informações não salvas/exibidas em /settings
 
-## O que será feito
+## Causa raiz
 
-Atualmente, após o cadastro, o usuário vê a mensagem "Verifique seu e-mail para confirmar o cadastro" e é redirecionado para o login sem estar autenticado. Isso cria fricção desnecessária.
+Dois problemas encadeados foram identificados:
 
-A mudança desativa essa exigência e faz o usuário entrar automaticamente logo após criar a conta.
+**Problema 1 — Trigger ausente**: A função `handle_new_user` existe no banco, mas o trigger que a chama (`on_auth_user_created`) nunca foi criado. Toda vez que um usuário se cadastra, o perfil na tabela `profiles` não é gerado automaticamente. A tabela `profiles` está completamente vazia.
 
-## Alterações necessárias
+**Problema 2 — Consequência**: Sem perfil, o `AuthContext` retorna `profile = null`. A página Settings tenta carregar os dados de `authProfile` mas recebe nulo — os campos ficam em branco e salvar não funciona porque não há linha para fazer UPDATE.
 
-### 1. Configuração de autenticação (backend)
-Ativar o **auto-confirm** no sistema de autenticação — os novos cadastros serão confirmados instantaneamente, sem e-mail.
+## O que será corrigido
 
-### 2. `src/contexts/AuthContext.tsx`
-Remover o `emailRedirectTo` da chamada de `signUp`, pois não fará mais sentido com auto-confirm ativo.
+### 1. Criar o trigger no banco de dados (migration)
+Criar o trigger `on_auth_user_created` que chama `handle_new_user()` a cada novo usuário criado em `auth.users`. Isso garante que todo cadastro futuro gere um perfil automaticamente.
 
-### 3. `src/pages/Signup.tsx`
-Alterar o comportamento após o cadastro:
-- **Antes**: exibe toast "Verifique seu e-mail" e redireciona para `/login`
-- **Depois**: exibe toast "Conta criada com sucesso!" e redireciona direto para `/feed` (o usuário já está autenticado)
+```sql
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_user();
+```
+
+### 2. Criar perfis para usuários existentes (migration)
+Para os usuários já cadastrados que não têm perfil, criar registros na tabela `profiles` com base nos metadados armazenados no sistema de autenticação:
+
+```sql
+INSERT INTO public.profiles (id, role, name, handle, category)
+SELECT
+  au.id,
+  COALESCE(au.raw_user_meta_data->>'role', 'fan'),
+  COALESCE(au.raw_user_meta_data->>'name', ''),
+  au.raw_user_meta_data->>'handle',
+  au.raw_user_meta_data->>'category'
+FROM auth.users au
+LEFT JOIN public.profiles p ON p.id = au.id
+WHERE p.id IS NULL
+ON CONFLICT (id) DO NOTHING;
+```
+
+### 3. Ajuste na página Settings — fallback de upsert
+Alterar `handleSaveProfile` para usar `upsert` em vez de `update`. Isso garante que, mesmo que um perfil ainda não exista por algum motivo, ele seja criado na primeira vez que o usuário salvar as configurações (proteção extra).
+
+```typescript
+// Antes: .update({...}).eq("id", user.id)
+// Depois: .upsert({ id: user.id, ...campos })
+```
+
+### 4. Ajuste no AuthContext — recarregar perfil após atualização
+Após o `handleSaveProfile`, forçar um novo fetch do perfil para que a Navbar e outros componentes que consomem `useAuth()` reflitam imediatamente as mudanças salvas.
+
+## Arquivos alterados
+
+| Arquivo | Alteração |
+|---|---|
+| Migration SQL | Criar trigger + inserir perfis para usuários existentes |
+| `src/pages/Settings.tsx` | Mudar `update` → `upsert` no handleSaveProfile |
+| `src/contexts/AuthContext.tsx` | Expor função `refreshProfile` para forçar recarga pós-save |
 
 ## Resultado esperado
 
-```text
-Usuário preenche cadastro
-        ↓
-Clica em "Criar conta"
-        ↓
-Conta criada + sessão iniciada automaticamente
-        ↓
-Redirecionado para /feed ✓
-```
-
-Sem e-mails de confirmação, sem etapa extra.
+- Novos cadastros criam perfil automaticamente
+- Usuários existentes que não tinham perfil recebem um perfil gerado a partir dos metadados do cadastro
+- A página Settings exibe os dados corretamente ao carregar
+- Salvar funciona para todos os usuários, novos ou antigos
