@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useFollow } from "@/hooks/useFollow";
 import { Link } from "react-router-dom";
 import { Heart, MessageCircle, Share2, Lock, MoreHorizontal, Bookmark, Send, Loader2 } from "lucide-react";
 import Navbar from "@/components/Navbar";
@@ -165,6 +166,33 @@ function CommentSection({ postId }: { postId: string }) {
           </button>
         </form>
       )}
+    </div>
+  );
+}
+
+// Follow button per suggestion item (needs its own component for hook rules)
+function SuggestionItem({ creator }: { creator: { id: string | number; name: string; avatar_url?: string | null; avatar?: string; category?: string | null } }) {
+  const { isFollowing, toggle, isPending } = useFollow(String(creator.id));
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <Link to={`/creator/${creator.id}`} className="flex items-center gap-2 min-w-0">
+        <img src={creator.avatar_url || (creator as any).avatar || "/placeholder.svg"} alt={creator.name} className="h-9 w-9 rounded-full object-cover flex-shrink-0" />
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground truncate">{creator.name}</p>
+          <p className="text-xs text-muted-foreground">{creator.category}</p>
+        </div>
+      </Link>
+      <button
+        onClick={toggle}
+        disabled={isPending}
+        className={`text-xs font-semibold flex-shrink-0 transition-colors px-2 py-1 rounded-lg ${
+          isFollowing
+            ? "text-muted-foreground bg-muted/60"
+            : "text-primary hover:text-primary/80"
+        }`}
+      >
+        {isFollowing ? "Seguindo" : "Seguir"}
+      </button>
     </div>
   );
 }
@@ -376,21 +404,7 @@ const Feed = () => {
           <div className="glass-card rounded-2xl p-4 flex flex-col gap-3">
             <p className="text-sm font-semibold text-foreground">Sugestões para você</p>
             {suggestions.map((creator) => (
-              <div key={creator.id} className="flex items-center justify-between gap-2">
-                <Link to={`/creator/${creator.id}`} className="flex items-center gap-2 min-w-0">
-                  <img src={(creator as any).avatar_url || (creator as any).avatar || "/placeholder.svg"} alt={creator.name} className="h-9 w-9 rounded-full object-cover flex-shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{creator.name}</p>
-                    <p className="text-xs text-muted-foreground">{creator.category}</p>
-                  </div>
-                </Link>
-                <Link
-                  to={`/creator/${creator.id}`}
-                  className="text-xs font-semibold text-primary hover:text-primary/80 flex-shrink-0"
-                >
-                  Seguir
-                </Link>
-              </div>
+              <SuggestionItem key={creator.id} creator={creator} />
             ))}
           </div>
         </aside>

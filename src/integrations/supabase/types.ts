@@ -43,6 +43,42 @@ export type Database = {
           },
         ]
       }
+      follows: {
+        Row: {
+          created_at: string
+          creator_id: string
+          fan_id: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          creator_id: string
+          fan_id: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          creator_id?: string
+          fan_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "follows_creator_id_fkey"
+            columns: ["creator_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "follows_fan_id_fkey"
+            columns: ["fan_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           created_at: string

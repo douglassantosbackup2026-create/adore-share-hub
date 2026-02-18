@@ -54,7 +54,9 @@ export function useCreators() {
         postsMap.set(p.creator_id, (postsMap.get(p.creator_id) || 0) + 1);
       });
 
-      return profiles.map((p) => ({
+      return profiles
+        .filter((p) => (postsMap.get(p.id) ?? 0) > 0)
+        .map((p) => ({
         ...p,
         price: priceMap.get(p.id) ?? 0,
         subscribers: subsMap.get(p.id) ?? 0,

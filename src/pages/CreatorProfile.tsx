@@ -1,10 +1,11 @@
 import { useParams, Link } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { Heart, Star, Lock, MessageCircle, Share2, ChevronLeft, Check, Zap, Users } from "lucide-react";
+import { Heart, Star, Lock, MessageCircle, Share2, ChevronLeft, Check, Zap, Users, UserPlus, UserCheck } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { useCreatorProfile } from "@/hooks/useCreatorProfile";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useAuth } from "@/contexts/AuthContext";
+import { useFollow } from "@/hooks/useFollow";
 import { toast } from "sonner";
 import { sendMetaEvent } from "@/lib/metaCapi";
 import { PixPaymentModal } from "@/components/PixPaymentModal";
@@ -45,6 +46,7 @@ const CreatorProfile = () => {
   
   const { profile: realProfile, plans: realPlans, posts: realPosts, subscriberCount } = useCreatorProfile(id);
   const { isSubscribed, subscribe } = useSubscription(id);
+  const { isFollowing, followersCount, toggle: toggleFollow, isPending: followPending } = useFollow(id);
 
   const [activeTab, setActiveTab] = useState("Todos");
   const [liked, setLiked] = useState(false);
@@ -186,6 +188,21 @@ const CreatorProfile = () => {
           </div>
 
           <div className="flex gap-3 md:pb-2">
+            <button
+              onClick={toggleFollow}
+              disabled={followPending}
+              className={`flex items-center gap-2 h-11 px-4 rounded-xl border font-medium text-sm transition-all duration-200 ${
+                isFollowing
+                  ? "border-primary/60 bg-primary/10 text-primary"
+                  : "border-border/60 bg-card text-muted-foreground hover:text-primary hover:border-primary/40"
+              }`}
+            >
+              {isFollowing ? (
+                <><UserCheck className="h-4 w-4" /> Seguindo</>
+              ) : (
+                <><UserPlus className="h-4 w-4" /> Seguir</>
+              )}
+            </button>
             <button
               onClick={() => setLiked(!liked)}
               className={`flex h-11 w-11 items-center justify-center rounded-xl border transition-all duration-200 ${
