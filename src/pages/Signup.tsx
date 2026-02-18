@@ -63,8 +63,8 @@ const Signup = () => {
       toast({ title: "Erro ao criar conta", description: error.message, variant: "destructive" });
     } else {
       sendMetaEvent({ event_name: "CompleteRegistration", user_email: form.email });
-      toast({ title: "Conta criada!", description: "Verifique seu e-mail para confirmar o cadastro." });
-      navigate("/login");
+      toast({ title: "Conta criada com sucesso!" });
+      navigate("/feed");
     }
   };
 
