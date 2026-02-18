@@ -1,52 +1,78 @@
 
-# Adicionar Meta Pixel em Todas as Páginas
+# Corrigir Build + Integrar Meta Conversions API
 
-## Abordagem
+## Dois problemas a resolver
 
-Como a plataforma é uma Single Page Application (SPA) com React, basta adicionar o código do Meta Pixel **uma única vez** no arquivo `index.html`, dentro do `<head>`. Isso garante que o pixel seja carregado em todas as páginas automaticamente, sem duplicação.
+### Problema 1: Erro de Build (noscript no head)
 
----
-
-## O que será feito
-
-### Arquivo: `index.html`
-
-Inserir o script do Meta Pixel (ID: `4384406811885630`) dentro da tag `<head>`, logo antes do fechamento `</head>`:
+O HTML5 não permite tags `<img>` dentro de `<noscript>` no `<head>`. A correção é mover o bloco `<noscript>` para o `<body>`, logo após a abertura da tag:
 
 ```html
-<!-- Meta Pixel Code -->
-<script>
-  !function(f,b,e,v,n,t,s)
-  {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-  n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-  if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-  n.queue=[];t=b.createElement(e);t.async=!0;
-  t.src=v;s=b.getElementsByTagName(e)[0];
-  s.parentNode.insertBefore(t,s)}(window, document,'script',
-  'https://connect.facebook.net/en_US/fbevents.js');
-  fbq('init', '4384406811885630');
-  fbq('track', 'PageView');
-</script>
-<noscript>
-  <img height="1" width="1" style="display:none"
-    src="https://www.facebook.com/tr?id=4384406811885630&ev=PageView&noscript=1"
-  />
-</noscript>
-<!-- End Meta Pixel Code -->
+<body>
+  <noscript>
+    <img height="1" width="1" style="display:none"
+      src="https://www.facebook.com/tr?id=4384406811885630&ev=PageView&noscript=1"
+    />
+  </noscript>
+  <div id="root"></div>
+  ...
+</body>
 ```
 
----
+### Problema 2: Token da Meta Ads API
 
-## Por que só um arquivo?
+O token fornecido é uma credencial de acesso à **Meta Conversions API (CAPI)** — a versão server-side do rastreamento. Isso permite enviar eventos (cadastro, assinatura, compra) diretamente do servidor para o Meta, complementando o pixel do navegador.
 
-Em SPAs (React + Vite), o `index.html` é o único arquivo HTML carregado pelo navegador. Toda navegação entre páginas (`/`, `/discover`, `/feed`, etc.) acontece via JavaScript, sem recarregar o HTML. O pixel, ao ser incluído no `<head>`, é inicializado uma vez e rastreia `PageView` no carregamento inicial.
-
-> Se no futuro quiser rastrear eventos específicos por rota (ex: `ViewContent` ao visitar um perfil de criador), basta adicionar chamadas `fbq('track', ...)` nos componentes React relevantes.
+**O token NUNCA deve ficar no código-fonte.** Será armazenado com segurança como um secret do backend e usado apenas dentro de uma função de backend.
 
 ---
 
-## Resumo
+## O que será implementado
 
-| Arquivo | Alteração |
+### Etapa 1: Corrigir `index.html`
+- Mover `<noscript>` do `<head>` para o `<body>` — resolve o erro de build.
+
+### Etapa 2: Armazenar o token com segurança
+- Guardar o token (`EAAXIx...`) como secret `META_CAPI_TOKEN` no backend seguro — ele nunca ficará visível no código.
+
+### Etapa 3: Criar Edge Function `meta-capi`
+Uma função de backend que recebe eventos da aplicação e os encaminha para a Meta Conversions API:
+
+```
+POST /meta-capi
+{
+  "event_name": "Lead",        // ou Purchase, CompleteRegistration, etc.
+  "user_email": "...",         // para matching de usuário (hasheado automaticamente)
+  "value": 29.90               // opcional, para eventos de compra
+}
+```
+
+A função usa o `META_CAPI_TOKEN` e o Pixel ID `4384406811885630` para enviar para:
+`https://graph.facebook.com/v18.0/4384406811885630/events`
+
+### Etapa 4: Disparar eventos nas ações relevantes
+Adicionar chamadas à edge function nos momentos-chave:
+
+| Ação do usuário | Evento Meta |
 |---|---|
-| `index.html` | Inserir Meta Pixel no `<head>` |
+| Cadastro concluído | `CompleteRegistration` |
+| Clicar em assinar | `InitiateCheckout` |
+| Visitar perfil de criador | `ViewContent` |
+
+---
+
+## Resumo de arquivos
+
+| Arquivo | Ação |
+|---|---|
+| `index.html` | Mover `<noscript>` para o `<body>` |
+| Backend secret | Adicionar `META_CAPI_TOKEN` |
+| `supabase/functions/meta-capi/index.ts` | Criar edge function |
+| `src/pages/Signup.tsx` | Disparar `CompleteRegistration` |
+| `src/pages/CreatorProfile.tsx` | Disparar `ViewContent` |
+
+---
+
+## Segurança
+
+O token nunca ficará exposto ao navegador. Toda comunicação com a Meta Conversions API ocorre servidor → servidor, dentro da edge function protegida.
