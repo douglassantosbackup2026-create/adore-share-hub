@@ -118,6 +118,12 @@ const CreatorProfile = () => {
     });
     try {
       await subscribe.mutateAsync(plans[selectedPlan].name);
+      sendMetaEvent({
+        event_name: "Purchase",
+        user_email: user.email,
+        value: plans[selectedPlan].price,
+        currency: "BRL",
+      });
       toast.success("Assinatura realizada com sucesso!");
     } catch {
       toast.error("Erro ao assinar. Tente novamente.");
