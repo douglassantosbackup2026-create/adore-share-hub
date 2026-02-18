@@ -1,135 +1,169 @@
 
-# 3 Melhorias: Seguir grátis, Filtrar criadores sem posts, Página de perfil do fã
+# 4 Melhorias: Gráfico real, Onboarding do criador, Landing com criadores reais, Preview do post
 
-## O que será feito
+## O que cada melhoria resolve
 
-### 1. Sistema de "Seguir" gratuito
+| Problema | Causa raiz | Solução |
+|---|---|---|
+| Gráfico hardcoded | `revenueData` é array estático no topo do arquivo | Nova função RPC no banco + hook que soma receita por mês |
+| Onboarding ausente | Após signup, criador vai direto ao feed sem configurar nada | Nova página `/onboarding` só para criadores recém-criados |
+| Landing com dados mock | `Index.tsx` usa `mockCreators.slice(0, 4)` sem consultar banco | `useCreators()` já filtra criadores com posts — só substituir a fonte |
+| Sem preview do post | O upload aciona publicação diretamente no `onChange` | Adicionar estado de "rascunho" com modal de preview antes de confirmar |
 
-**Banco de dados — nova tabela `follows`:**
+---
+
+## 1. Gráfico de receita real
+
+**Banco de dados — nova função RPC:**
+
+A abordagem correta (conforme a boa prática) é agregar os dados no banco, não no cliente. A função calcula, para cada um dos últimos 6 meses, quantas assinaturas ativas o criador tinha e qual era o preço de cada plano — resultando na receita estimada por mês.
+
 ```sql
-CREATE TABLE public.follows (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  fan_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  creator_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  created_at timestamptz DEFAULT now() NOT NULL,
-  UNIQUE (fan_id, creator_id)
-);
-
-ALTER TABLE public.follows ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Follows are public" ON public.follows FOR SELECT USING (true);
-CREATE POLICY "Fans can follow" ON public.follows FOR INSERT WITH CHECK (auth.uid() = fan_id);
-CREATE POLICY "Fans can unfollow" ON public.follows FOR DELETE USING (auth.uid() = fan_id);
+CREATE OR REPLACE FUNCTION get_creator_monthly_revenue(p_creator_id uuid)
+RETURNS TABLE (month text, value numeric)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+  SELECT
+    TO_CHAR(generate_series, 'Mon', 'pt_BR') AS month,
+    COALESCE((
+      SELECT SUM(cp.price)
+      FROM subscriptions s
+      JOIN creator_plans cp ON cp.creator_id = s.creator_id
+        AND cp.plan_name = s.plan
+      WHERE s.creator_id = p_creator_id
+        AND s.active = true
+        AND DATE_TRUNC('month', s.created_at) <= generate_series
+    ), 0) AS value
+  FROM generate_series(
+    DATE_TRUNC('month', NOW() - INTERVAL '5 months'),
+    DATE_TRUNC('month', NOW()),
+    INTERVAL '1 month'
+  )
+  ORDER BY generate_series;
+$$;
 ```
 
-**Hook `useFollow(creatorId)`** — novo arquivo `src/hooks/useFollow.ts`:
-- Consulta se o usuário logado já segue o criador
-- Mutation `follow()` — insert na tabela
-- Mutation `unfollow()` — delete na tabela
-- Retorna `{ isFollowing, follow, unfollow, followersCount }`
+**Hook `useMonthlyRevenue(creatorId)`** — novo arquivo `src/hooks/useMonthlyRevenue.ts`:
+- Chama `supabase.rpc('get_creator_monthly_revenue', { p_creator_id })` 
+- Retorna `{ data, isLoading }`
 
-**Onde aparece o botão "Seguir":**
-
-- `CreatorProfile.tsx` — ao lado dos botões de curtir/mensagem no header do perfil, um botão "Seguir" separado do botão de assinatura paga
-- `Feed.tsx` — sidebar "Sugestões para você": o link "Seguir" vira um botão real com toggle
-- `Discover.tsx` e `CreatorCard.tsx` — opcional/futuro (não muda agora para não inflar o escopo)
-
-**Lógica visual:**
-- Não seguindo → botão outline "Seguir" com ícone `UserPlus`
-- Seguindo → botão preenchido "Seguindo ✓" com ícone `UserCheck`
-- Usuário não logado → redireciona para `/login` com toast
+**Dashboard.tsx:**
+- Remove a constante `revenueData` hardcoded (linhas 20–27)
+- Importa e usa `useMonthlyRevenue(user?.id)` 
+- Passa os dados reais para o `<AreaChart>`
+- Enquanto carrega: skeleton animado no lugar do gráfico
 
 ---
 
-### 2. Filtrar criadores sem posts no feed
+## 2. Onboarding do criador
 
-**Onde ocorre o problema:**
-- `useCreators.ts` já busca `postCount` por criador (via query na tabela `posts`)
-- O `postsMap` está disponível, mas o retorno **não filtra** criadores com 0 posts
+**Nova rota `/onboarding`** — acessível apenas para criadores.
 
-**Correção em `useCreators.ts`:**
-Adicionar filtro no `.map()` final:
-```ts
-return profiles
-  .filter(p => (postsMap.get(p.id) ?? 0) > 0)  // ← só quem postou
-  .map((p) => ({ ... }));
-```
-
-**Impacto:**
-- Stories no feed (`realCreators.slice(0, 6)`) — só mostra criadores com posts
-- Sugestões na sidebar (`realCreators.slice(0, 5)`) — idem
-- Discover (`useCreators()`) — idem
-
-Isso não afeta o `CreatorProfile`, que usa `useCreatorProfile(id)` diretamente e não depende do `useCreators`.
-
----
-
-### 3. Página de perfil do fã `/profile/:id`
-
-**Nova página `src/pages/FanProfile.tsx`:**
-
-Layout inspirado no perfil do criador, mas voltado para o fã:
+**Fluxo:**
 
 ```text
-┌──────────────────────────────────────────────┐
-│  [Cover (ou gradiente padrão)]               │
-│  [Avatar]  Nome do fã                        │
-│            @handle · Membro desde X          │
-│                                              │
-│  [X seguindo]   [Y assinantes]               │
-├──────────────────────────────────────────────┤
-│  Criadores que segue          Assinando agora │
-│  [grid de avatares com link ao perfil]       │
-└──────────────────────────────────────────────┘
+Signup como criador
+       ↓
+  navigate("/onboarding")   ← em vez de "/feed"
+       ↓
+┌─────────────────────────────────────┐
+│  Boas-vindas, [Nome]!               │
+│  Complete seu perfil para começar   │
+│                                     │
+│  [Foto de perfil]  [Foto de capa]   │
+│  Bio .............................   │
+│  Preço Fã: R$ ___                   │
+│  Preço Super Fã: R$ ___             │
+│  Preço VIP: R$ ___                  │
+│                                     │
+│  [Ir para o Dashboard →]            │
+└─────────────────────────────────────┘
 ```
 
-**Dados buscados:**
-- Perfil do fã via `profiles` (by `id` do param)
-- Lista de criadores que ele segue via `follows`
-- Lista de criadores que ele assina via `subscriptions` (só `creator_id`, não o valor)
+**Arquivos afetados:**
 
-**Acesso à própria página:**
-- Navbar: o botão do avatar/settings passa a ter um link adicional "Meu perfil" → `/profile/:userId`
-- A rota `/profile/:id` é pública (qualquer um pode ver o perfil de um fã)
+- `src/pages/Onboarding.tsx` — nova página:
+  - Upload de avatar/capa (igual ao Settings)
+  - Textarea para bio
+  - 3 inputs de preço (fan, superfan, vip)
+  - Ao salvar: update em `profiles` + upsert em `creator_plans` → navega para `/dashboard`
+  - Botão "Pular por agora" → vai direto para `/dashboard`
 
-**Rota adicionada em `App.tsx`:**
-```tsx
-<Route path="/profile/:id" element={<FanProfile />} />
-```
+- `src/pages/Signup.tsx` — alterar o `navigate` após signup bem-sucedido:
+  - Se `role === "creator"` → `navigate("/onboarding")`
+  - Se `role === "fan"` → `navigate("/feed")` (mantém atual)
 
-**Atualizações na Navbar:**
-- O ícone de usuário (settings) passa a exibir o avatar real do perfil quando existe (`profile.avatar_url`)
-- Dropdown simples com "Meu perfil" e "Configurações" ao clicar
+- `src/App.tsx` — nova rota:
+  ```tsx
+  <Route path="/onboarding" element={<CreatorRoute><Onboarding /></CreatorRoute>} />
+  ```
 
 ---
 
-## Resumo técnico das mudanças
+## 3. Landing page com criadores reais
+
+**Index.tsx:**
+- Adiciona `import { useCreators } from "@/hooks/useCreators"` 
+- `const { data: realCreators } = useCreators()` dentro do componente
+- `const featured = realCreators?.length ? realCreators.slice(0, 4) : mockCreators.slice(0, 4)`
+- A seção "Criadores populares" exibe os criadores ordenados por `subscribers` (maior primeiro):
+  ```ts
+  const featured = [...(realCreators ?? [])]
+    .sort((a, b) => b.subscribers - a.subscribers)
+    .slice(0, 4);
+  ```
+- Se não há criadores reais ainda, cai de volta para os mocks (comportamento atual)
+
+Essa mudança é simples — `useCreators` já faz todo o trabalho pesado e já filtra quem tem posts.
+
+---
+
+## 4. Preview do post antes de publicar
+
+**Dashboard.tsx — estado de rascunho:**
+
+Adicionar estado `previewFile` e um modal de confirmação antes de publicar:
+
+```text
+Criador preenche legenda + seleciona plano
+         ↓
+  Clica na área de upload
+         ↓
+  Seleciona arquivo → arquivo entra em estado de "rascunho"
+         ↓
+┌──────────────────────────────────────┐
+│  Preview do post                     │
+│                                      │
+│  [thumbnail da imagem/vídeo]         │
+│  Legenda: "..."                      │
+│  Acesso: Fã                          │
+│                                      │
+│  [Cancelar]     [Publicar agora →]   │
+└──────────────────────────────────────┘
+         ↓
+  Clica "Publicar" → upload + insert no banco
+```
+
+**Implementação:**
+- Adicionar estado: `previewFile: File | null`, `previewUrl: string | null`, `previewOpen: boolean`
+- No `onChange` do input: em vez de chamar `handleUpload` diretamente, setar o arquivo em estado e abrir o modal
+- Usar o componente `Dialog` já disponível no projeto (`src/components/ui/dialog.tsx`)
+- No modal: `<img>` ou `<video>` com `src={previewUrl}` (via `URL.createObjectURL(file)`)
+- Botão "Publicar agora" no modal executa o upload real
+- Limpa o `previewUrl` com `URL.revokeObjectURL` ao fechar/publicar
+
+---
+
+## Resumo das mudanças por arquivo
 
 | Arquivo | Mudança |
 |---|---|
-| Banco de dados | Nova tabela `follows` + RLS |
-| `src/hooks/useFollow.ts` | Novo hook |
-| `src/hooks/useCreators.ts` | Filtrar criadores com `postCount > 0` |
-| `src/pages/CreatorProfile.tsx` | Botão "Seguir" no header |
-| `src/pages/Feed.tsx` | Botão "Seguir" funcional na sidebar |
-| `src/pages/FanProfile.tsx` | Nova página |
-| `src/components/Navbar.tsx` | Avatar real + link "Meu perfil" |
-| `src/App.tsx` | Rota `/profile/:id` |
-
----
-
-## Fluxo após as correções
-
-**Seguir um criador:**
-1. Usuário vê perfil do criador → clica "Seguir" (gratuito, ao lado do coração)
-2. Botão muda para "Seguindo ✓" sem recarregar a página
-3. Criador aparece nas sugestões como "seguido"
-
-**Stories/Sugestões limpos:**
-1. `useCreators` retorna apenas criadores com ≥ 1 post
-2. Stories e sidebar do feed não mostram criadores "fantasma"
-
-**Perfil do fã:**
-1. Clica no avatar na navbar → menu com "Meu perfil"
-2. Vê própria página pública com quem segue e quem assina
-3. Qualquer pessoa pode acessar `/profile/:id` de um fã
+| Banco de dados | Nova função RPC `get_creator_monthly_revenue` |
+| `src/hooks/useMonthlyRevenue.ts` | Novo hook que chama a RPC |
+| `src/pages/Dashboard.tsx` | Remove hardcode, usa `useMonthlyRevenue`, adiciona modal de preview |
+| `src/pages/Signup.tsx` | Redireciona criador para `/onboarding` |
+| `src/pages/Onboarding.tsx` | Nova página de onboarding |
+| `src/pages/Index.tsx` | Usa `useCreators()` ordenado por assinantes |
+| `src/App.tsx` | Nova rota `/onboarding` |
