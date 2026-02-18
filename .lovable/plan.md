@@ -1,40 +1,63 @@
 
-# Exibir criadores reais na homepage
+# Corrigir visualização indevida e clique em posts bloqueados
 
-## Problema identificado
+## Problema 1: Usuário não logado vendo imagens reais
 
-O hook `useCreators` aplica o filtro `.filter((p) => (postsMap.get(p.id) ?? 0) > 0)` antes de retornar os criadores. Isso é correto para o `/discover` (não faz sentido mostrar criador sem posts no grid de descoberta), mas na homepage o resultado é `[]` porque os criadores cadastrados ainda não têm posts, causando o fallback para os 8 mocks.
+### Causa raiz
+O hook `useCreatorProfile` faz a query de posts **sem checar se o usuário está autenticado** (`enabled: !!creatorId` — sem verificar `user`). Isso faz com que a query rode mesmo para visitantes não logados.
 
-A homepage (`Index.tsx`) usa exatamente esse hook e só mostra dados reais se `realCreators?.length > 0`.
+O RLS na tabela `posts` bloqueia posts pagos para anônimos, mas **posts `min_plan = 'free'` são retornados pelo banco para anônimos** por causa da policy "Authenticated users can view free posts" que na verdade usa `auth.uid() IS NOT NULL`. Como o Supabase trata sessões anônimas sem token como `null`, posts free não deveriam aparecer — mas pode haver um delay de hidratação do React onde `user` ainda é `null` (carregando) e os posts já chegaram da cache do React Query.
 
-## O que precisa mudar
+### Correção no frontend (dupla proteção)
+1. **`useCreatorProfile`**: adicionar `user` como dependência e desabilitar a query de posts quando `!user`:
+   ```ts
+   enabled: !!creatorId && !!user
+   ```
+2. **`CreatorProfile.tsx`**: adicionar verificação do `loading` do auth antes de renderizar o grid — enquanto `loading === true`, não mostrar nem o gate nem o grid (evita flash de conteúdo durante hidratação).
 
-### 1. Novo hook: `src/hooks/useFeaturedCreators.ts`
+---
 
-Criar um hook separado e mais simples para a homepage, que:
-- Busca todos os perfis com `role = 'creator'`
-- Busca os planos de assinatura (para o preço)
-- Busca a contagem de assinantes
-- **Nao filtra por número de posts** — mostra qualquer criador cadastrado
-- Limita a 4 resultados, ordenados por número de assinantes
+## Problema 2: Clicar no post bloqueado não faz nada
 
-Manter o `useCreators` intacto porque a lógica de filtrar por posts é correta para o `/discover`.
+### Causa raiz
+O `div` do post bloqueado tem `cursor-pointer` mas **nenhum `onClick` handler** definido. O clique não dispara nenhuma ação.
 
-### 2. Atualizar `src/pages/Index.tsx`
+### Correção
+Adicionar `onClick` no post bloqueado com dois comportamentos:
+- **Usuário não logado**: redirecionar para `/signup` com toast informativo
+- **Usuário logado mas sem assinatura**: abrir o `PixPaymentModal` com o plano mais acessível pré-selecionado
 
-- Substituir `useCreators` por `useFeaturedCreators`
-- Remover a importação de `mockCreators`
-- A seção "Criadores populares" só aparece se houver dados reais (`featured.length > 0`). Se não houver nenhum criador cadastrado, ocultar a seção inteira com elegância — sem mostrar mock
-
-### Comportamento final
-
-| Situação | Homepage |
-|---|---|
-| Sem criadores no banco | Seção "Criadores populares" oculta |
-| 1-4 criadores sem posts | Exibe os criadores reais disponíveis |
-| 4+ criadores | Exibe os 4 mais populares (mais assinantes) |
+---
 
 ## Arquivos alterados
 
-- **Novo**: `src/hooks/useFeaturedCreators.ts`
-- **Atualizado**: `src/pages/Index.tsx` (troca de hook + remoção do fallback mock)
+### 1. `src/hooks/useCreatorProfile.ts`
+- Receber `user` como parâmetro opcional
+- Adicionar `!!user` na condição `enabled` da query de posts
+
+### 2. `src/pages/CreatorProfile.tsx`
+- Passar `user` para `useCreatorProfile`
+- Importar `useNavigate` para redirecionar não logados
+- Usar `loading` do `useAuth` para evitar flash de conteúdo durante inicialização
+- Adicionar `handleLockedPostClick()`:
+  - Se `!user`: `toast.info(...)` + `navigate("/signup")`
+  - Se logado mas não assinante: `setPixModalOpen(true)` com plano 0
+- Conectar o `onClick` no `div` do post bloqueado
+
+---
+
+## Sequência de execução
+
+```text
+1. Atualizar src/hooks/useCreatorProfile.ts (adicionar parâmetro user + enabled guard)
+2. Atualizar src/pages/CreatorProfile.tsx (loading guard + onClick nos posts bloqueados)
+```
+
+## Resultado esperado
+
+| Estado do usuário | Comportamento |
+|---|---|
+| Não logado (carregando) | Grid não renderiza (sem flash) |
+| Não logado (confirmado) | Gate de cadastro com placeholders |
+| Logado, sem assinatura | Posts free visíveis; locked mostram cadeado; clique abre Pix |
+| Logado, com assinatura | Todos os posts visíveis |
