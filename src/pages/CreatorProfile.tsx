@@ -2,7 +2,6 @@ import { useParams, Link } from "react-router-dom";
 import { useState } from "react";
 import { Heart, Star, Lock, MessageCircle, Share2, ChevronLeft, Check, Zap, Users } from "lucide-react";
 import Navbar from "@/components/Navbar";
-import mockCreators from "@/data/creators";
 import { useCreatorProfile } from "@/hooks/useCreatorProfile";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useAuth } from "@/contexts/AuthContext";
@@ -41,27 +40,41 @@ const CreatorProfile = () => {
   const { id } = useParams();
   const { user } = useAuth();
   
-  // Try real data
   const { profile: realProfile, plans: realPlans, posts: realPosts, subscriberCount } = useCreatorProfile(id);
   const { isSubscribed, subscribe } = useSubscription(id);
 
-  // Fallback to mock
-  const mockCreator = mockCreators.find((c) => c.id === Number(id)) || mockCreators[0];
+  const [activeTab, setActiveTab] = useState("Todos");
+  const [liked, setLiked] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState(0);
 
-  const creator = realProfile
-    ? {
-        ...realProfile,
-        avatar: realProfile.avatar_url || mockCreator.avatar,
-        cover: realProfile.cover_url || mockCreator.cover,
-        price: realPlans.length ? realPlans[0].price : mockCreator.price,
-        subscribers: subscriberCount || mockCreator.subscribers,
-        posts: realPosts.length || mockCreator.posts,
-        rating: mockCreator.rating,
-        verified: true,
-        tags: realProfile.category ? [realProfile.category] : [],
-        handle: realProfile.handle || mockCreator.handle,
-      }
-    : mockCreator;
+  // If no real profile found, show 404
+  if (!realProfile) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="container max-w-2xl pt-32 pb-16 text-center">
+          <h1 className="font-display text-4xl font-bold text-foreground mb-4">Criador não encontrado</h1>
+          <p className="text-muted-foreground mb-6">Este perfil não existe ou foi removido.</p>
+          <Link to="/discover" className="rounded-full bg-gradient-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-glow hover:scale-105 transition-transform">
+            Explorar criadores
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const creator = {
+    ...realProfile,
+    avatar: realProfile.avatar_url || "/placeholder.svg",
+    cover: realProfile.cover_url || "/placeholder.svg",
+    price: realPlans.length ? realPlans[0].price : 0,
+    subscribers: subscriberCount || 0,
+    posts: realPosts.length,
+    rating: 4.8,
+    verified: true,
+    tags: realProfile.category ? [realProfile.category] : [],
+    handle: realProfile.handle || "criador",
+  };
 
   const plans = realPlans.length
     ? realPlans.map((p, i) => ({
@@ -73,10 +86,6 @@ const CreatorProfile = () => {
         popular: i === 1,
       }))
     : defaultPlans.map((p) => ({ ...p, price: (creator as any).price * p.multiplier }));
-
-  const [activeTab, setActiveTab] = useState("Todos");
-  const [liked, setLiked] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState(plans.length > 1 ? 1 : 0);
 
   const lockedPosts = Array.from({ length: 9 }, (_, i) => ({
     id: i + 1,

@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import CreatorRoute from "@/components/CreatorRoute";
 import Index from "./pages/Index";
 import Discover from "./pages/Discover";
 import CreatorProfile from "./pages/CreatorProfile";
@@ -33,8 +34,8 @@ const App = () => (
             <Route path="/signup" element={<Signup />} />
             <Route path="/feed" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
             <Route path="/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
-            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/dashboard" element={<CreatorRoute><Dashboard /></CreatorRoute>} />
+            <Route path="/settings" element={<CreatorRoute><Settings /></CreatorRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -4,11 +4,10 @@ import { Heart, MessageCircle, Share2, Lock, MoreHorizontal, Bookmark } from "lu
 import Navbar from "@/components/Navbar";
 import { mockCreators } from "@/data/creators";
 import { usePosts } from "@/hooks/usePosts";
+import { useCreators } from "@/hooks/useCreators";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-
-const stories = mockCreators.slice(0, 6);
 
 const mockPosts = [
   {
@@ -57,12 +56,16 @@ const mockPosts = [
   },
 ];
 
-const suggestions = mockCreators.slice(2, 5);
-
 const Feed = () => {
   const { posts: realPosts, likePost } = usePosts();
+  const { data: realCreators } = useCreators();
   const { user, profile } = useAuth();
   const [localLikes, setLocalLikes] = useState<Set<string>>(new Set());
+  const [mockState, setMockState] = useState(mockPosts);
+
+  // Use real creators for stories/suggestions, fallback to mock
+  const stories = realCreators?.length ? realCreators.slice(0, 6) : mockCreators.slice(0, 6);
+  const suggestions = realCreators?.length ? realCreators.slice(0, 5) : mockCreators.slice(2, 5);
 
   // Use real posts or fallback to mock
   const useReal = realPosts.length > 0;
@@ -86,8 +89,6 @@ const Feed = () => {
         liked: localLikes.has(p.id),
       }))
     : mockPosts;
-
-  const [mockState, setMockState] = useState(mockPosts);
 
   const toggleLike = (id: string) => {
     if (useReal) {
@@ -123,7 +124,7 @@ const Feed = () => {
                   <div className="relative">
                     <div className="h-16 w-16 rounded-full p-0.5 bg-gradient-primary shadow-glow">
                       <img
-                        src={creator.avatar}
+                        src={(creator as any).avatar_url || (creator as any).avatar || "/placeholder.svg"}
                         alt={creator.name}
                         className="h-full w-full rounded-full object-cover border-2 border-background"
                       />
@@ -227,7 +228,7 @@ const Feed = () => {
             {suggestions.map((creator) => (
               <div key={creator.id} className="flex items-center justify-between gap-2">
                 <Link to={`/creator/${creator.id}`} className="flex items-center gap-2 min-w-0">
-                  <img src={creator.avatar} alt={creator.name} className="h-9 w-9 rounded-full object-cover flex-shrink-0" />
+                  <img src={(creator as any).avatar_url || (creator as any).avatar || "/placeholder.svg"} alt={creator.name} className="h-9 w-9 rounded-full object-cover flex-shrink-0" />
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-foreground truncate">{creator.name}</p>
                     <p className="text-xs text-muted-foreground">{creator.category}</p>

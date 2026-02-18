@@ -20,6 +20,7 @@ const withdrawals = [
 const Settings = () => {
   const { profile: authProfile, user } = useAuth();
   const avatarRef = useRef<HTMLInputElement>(null);
+  const coverRef = useRef<HTMLInputElement>(null);
 
   const [profileForm, setProfileForm] = useState({
     name: "",
@@ -120,6 +121,23 @@ const Settings = () => {
     toast.success("Avatar atualizado!");
   };
 
+  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    const ext = file.name.split(".").pop();
+    const path = `${user.id}/${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabase.storage.from("covers").upload(path, file);
+    if (uploadError) {
+      toast.error("Erro ao enviar capa");
+      return;
+    }
+
+    const { data: urlData } = supabase.storage.from("covers").getPublicUrl(path);
+    await supabase.from("profiles").update({ cover_url: urlData.publicUrl }).eq("id", user.id);
+    toast.success("Capa atualizada!");
+  };
+
   const handleSavePlans = async () => {
     if (!user) return;
     const planEntries = [
@@ -212,6 +230,26 @@ const Settings = () => {
                 </div>
               </div>
 
+              {/* Cover upload */}
+              <div className="flex flex-col gap-2">
+                <Label>Imagem de capa</Label>
+                <input ref={coverRef} type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
+                <div
+                  onClick={() => coverRef.current?.click()}
+                  className="relative h-32 rounded-xl overflow-hidden border border-border/50 cursor-pointer group"
+                >
+                  {authProfile?.cover_url ? (
+                    <img src={authProfile.cover_url} alt="Capa" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="h-full w-full bg-muted/30 flex items-center justify-center">
+                      <p className="text-sm text-muted-foreground">Clique para adicionar uma capa</p>
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-background/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <Camera className="h-6 w-6 text-foreground" />
+                  </div>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
                   <Label>Nome</Label>
