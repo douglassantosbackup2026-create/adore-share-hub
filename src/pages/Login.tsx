@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Flame, Eye, EyeOff, Mail, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,14 +13,18 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
-  const { signIn, user, profile } = useAuth();
+  const { signIn, user, profile, loading } = useAuth();
   const { toast } = useToast();
 
-  // Redirect if already logged in
-  if (user && profile) {
-    navigate(profile.role === "creator" ? "/dashboard" : "/feed", { replace: true });
-    return null;
-  }
+  useEffect(() => {
+    if (!loading && user) {
+      if (profile) {
+        navigate(profile.role === "creator" ? "/dashboard" : "/feed", { replace: true });
+      } else {
+        navigate("/onboarding", { replace: true });
+      }
+    }
+  }, [user, profile, loading, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
