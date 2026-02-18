@@ -20,10 +20,15 @@ export async function sendMetaEvent(event: MetaCapiEvent): Promise<void> {
           "Content-Type": "application/json",
           "apikey": anonKey,
         },
-        body: JSON.stringify(event),
+        body: JSON.stringify({
+          ...event,
+          client_user_agent: navigator.userAgent,
+          event_source_url: window.location.href,
+        }),
       }
     );
   } catch {
     // Fire-and-forget: never block the user flow
   }
 }
+

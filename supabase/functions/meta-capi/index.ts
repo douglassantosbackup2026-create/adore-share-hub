@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { event_name, user_email, value, currency } = await req.json();
+    const { event_name, user_email, value, currency, event_source_url, client_user_agent, client_ip_address } = await req.json();
 
     if (!event_name) {
       return new Response(JSON.stringify({ error: "event_name is required" }), {
@@ -36,17 +36,34 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Build user_data — Facebook requires at least client_ip_address + client_user_agent
+    // when no hashed identifiers (email/phone) are present
     const userData: Record<string, string> = {};
+
     if (user_email) {
       userData.em = hashEmail(user_email);
     }
 
+    // Use caller-supplied IP/UA or fall back to request headers
+    const ip = client_ip_address ||
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      req.headers.get("x-real-ip") || "";
+    if (ip) userData.client_ip_address = ip;
+
+    const ua = client_user_agent || req.headers.get("user-agent") || "";
+    if (ua) userData.client_user_agent = ua;
+
     const eventData: Record<string, unknown> = {
       event_name,
       event_time: Math.floor(Date.now() / 1000),
+      event_id: crypto.randomUUID(),
       action_source: "website",
       user_data: userData,
     };
+
+    if (event_source_url) {
+      eventData.event_source_url = event_source_url;
+    }
 
     if (value !== undefined) {
       eventData.custom_data = {
