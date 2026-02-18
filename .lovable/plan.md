@@ -1,65 +1,65 @@
 
-# Corrigir: informações não salvas/exibidas em /settings
+# Corrigir o Feed para funcionar como OnlyFans/Privacy
 
-## Causa raiz
+## Problema raiz
 
-Dois problemas encadeados foram identificados:
+A política RLS atual impede que posts pagos apareçam no feed para não-assinantes. O resultado: o feed fica vazio para quem não tem assinatura, em vez de mostrar os posts bloqueados com o incentivo de assinar.
 
-**Problema 1 — Trigger ausente**: A função `handle_new_user` existe no banco, mas o trigger que a chama (`on_auth_user_created`) nunca foi criado. Toda vez que um usuário se cadastra, o perfil na tabela `profiles` não é gerado automaticamente. A tabela `profiles` está completamente vazia.
+## O que precisa mudar
 
-**Problema 2 — Consequência**: Sem perfil, o `AuthContext` retorna `profile = null`. A página Settings tenta carregar os dados de `authProfile` mas recebe nulo — os campos ficam em branco e salvar não funciona porque não há linha para fazer UPDATE.
+### 1. Nova política RLS nos posts
 
-## O que será corrigido
-
-### 1. Criar o trigger no banco de dados (migration)
-Criar o trigger `on_auth_user_created` que chama `handle_new_user()` a cada novo usuário criado em `auth.users`. Isso garante que todo cadastro futuro gere um perfil automaticamente.
+Adicionar uma terceira política de SELECT que permite todos os usuários autenticados verem a existência de qualquer post (metadados: texto, contagem de likes, criador). Isso não expõe o conteúdo — a URL da mídia continua sendo retornada pelo banco, mas o bloqueio visual é feito no frontend (blur + cadeado), exatamente como OnlyFans e Privacy fazem.
 
 ```sql
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW
-  EXECUTE FUNCTION public.handle_new_user();
+-- Nova política: usuários autenticados veem todos os posts (para o feed funcionar)
+CREATE POLICY "Authenticated users can see all posts in feed"
+ON public.posts FOR SELECT
+TO authenticated
+USING (true);
 ```
 
-### 2. Criar perfis para usuários existentes (migration)
-Para os usuários já cadastrados que não têm perfil, criar registros na tabela `profiles` com base nos metadados armazenados no sistema de autenticação:
+As políticas existentes de FREE e SUBSCRIBERS continuam, pois o Postgres aplica as políticas com OR entre elas (permissive). Ou seja: um post aparece se o usuário for anônimo + post free, ou se for autenticado (qualquer post).
 
-```sql
-INSERT INTO public.profiles (id, role, name, handle, category)
-SELECT
-  au.id,
-  COALESCE(au.raw_user_meta_data->>'role', 'fan'),
-  COALESCE(au.raw_user_meta_data->>'name', ''),
-  au.raw_user_meta_data->>'handle',
-  au.raw_user_meta_data->>'category'
-FROM auth.users au
-LEFT JOIN public.profiles p ON p.id = au.id
-WHERE p.id IS NULL
-ON CONFLICT (id) DO NOTHING;
-```
+### 2. Ajuste no hook `usePosts` — separar "ver no feed" de "ver o conteúdo"
 
-### 3. Ajuste na página Settings — fallback de upsert
-Alterar `handleSaveProfile` para usar `upsert` em vez de `update`. Isso garante que, mesmo que um perfil ainda não exista por algum motivo, ele seja criado na primeira vez que o usuário salvar as configurações (proteção extra).
+O hook vai buscar todos os posts, mas a lógica de `locked` no feed vai verificar se o usuário tem assinatura ativa com aquele criador. Se não tiver, a imagem aparece borrada + cadeado + botão "Assinar para ver".
+
+Criar um hook complementar `useMySubscriptions` que busca todos os `creator_id` que o usuário atual assina, para o feed saber quais posts estão desbloqueados.
 
 ```typescript
-// Antes: .update({...}).eq("id", user.id)
-// Depois: .upsert({ id: user.id, ...campos })
+// Retorna um Set de creator_ids que o usuário assina
+export function useMySubscriptions(): Set<string>
 ```
 
-### 4. Ajuste no AuthContext — recarregar perfil após atualização
-Após o `handleSaveProfile`, forçar um novo fetch do perfil para que a Navbar e outros componentes que consomem `useAuth()` reflitam imediatamente as mudanças salvas.
+### 3. Atualizar o Feed para usar a lógica correta de locked
+
+A lógica de `locked` no `Feed.tsx` passa a ser:
+
+```typescript
+locked: p.min_plan !== "free" && !mySubscriptions.has(p.creator_id)
+```
+
+Assim:
+- Post `free` → sempre visível
+- Post `basic`/`vip` + usuário assina aquele criador → visível
+- Post `basic`/`vip` + usuário NÃO assina → aparece borrado com "Assinar para ver"
+
+### 4. Comportamento visual do post bloqueado (já existe, só precisa funcionar)
+
+O Feed já tem o visual correto de blur + cadeado + botão. Ele só não aparecia porque os posts nunca chegavam. Com a correção do RLS, o visual vai funcionar automaticamente.
 
 ## Arquivos alterados
 
-| Arquivo | Alteração |
+| O que muda | Onde |
 |---|---|
-| Migration SQL | Criar trigger + inserir perfis para usuários existentes |
-| `src/pages/Settings.tsx` | Mudar `update` → `upsert` no handleSaveProfile |
-| `src/contexts/AuthContext.tsx` | Expor função `refreshProfile` para forçar recarga pós-save |
+| Nova política RLS (migration) | Banco de dados |
+| Novo hook `useMySubscriptions` | `src/hooks/useMySubscriptions.ts` (arquivo novo) |
+| Lógica de `locked` corrigida | `src/hooks/usePosts.ts` ou `src/pages/Feed.tsx` |
 
 ## Resultado esperado
 
-- Novos cadastros criam perfil automaticamente
-- Usuários existentes que não tinham perfil recebem um perfil gerado a partir dos metadados do cadastro
-- A página Settings exibe os dados corretamente ao carregar
-- Salvar funciona para todos os usuários, novos ou antigos
+- Fã não-assinante acessa `/feed` e vê todos os posts de todos os criadores
+- Posts pagos aparecem com a imagem borrada, cadeado e botão "Assinar para ver"  
+- Fã que assina um criador vê os posts daquele criador normalmente, sem blur
+- O modelo de negócio funciona: o usuário é incentivado a assinar ao ver o conteúdo bloqueado
