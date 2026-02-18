@@ -1,107 +1,98 @@
 
 
-# Fase 3 — Implementacao Completa
+# Preparar a Plataforma para Criadores Reais
 
-## Resumo
+## Situacao Atual
 
-Aplicar a migration de Storage RLS + realtime, criar tipos compartilhados, 7 hooks customizados e adaptar 7 arquivos existentes para usar dados reais do banco.
-
----
-
-## Etapa 1: Migration SQL
-
-Criar `supabase/migrations/20260218_storage_rls_and_realtime.sql` com:
-- 12 policies de Storage RLS (INSERT/UPDATE/DELETE/SELECT) para os buckets `avatars`, `covers` e `content`
-- Cada policy restringe operacoes ao path `auth.uid()/filename`
-- `ALTER PUBLICATION supabase_realtime ADD TABLE public.messages`
+A base esta funcional: cadastro com roles, perfil, upload de conteudo, planos e mensagens estao conectados ao banco. Porem, ha lacunas criticas que precisam ser resolvidas antes de receber criadores reais.
 
 ---
 
-## Etapa 2: Tipos compartilhados
+## Problemas Criticos a Resolver
 
-Criar `src/types/profile.ts` com:
-- `CreatorWithStats` — profile + price, subscribers, postCount agregados
-- `PostWithCreator` — post com dados do criador (join)
-- `ConversationItem` — conversa agrupada com ultima mensagem
+### 1. Controle de Acesso por Role nas Rotas
+Atualmente, qualquer usuario logado (inclusive fas) pode acessar `/dashboard` e `/settings` (aba de planos). Criadores precisam de rotas exclusivas.
 
----
+**Solucao:** Criar um componente `CreatorRoute` que verifica `profile.role === "creator"` e redireciona fas para `/feed`.
 
-## Etapa 3: Hooks customizados (7 arquivos novos)
+### 2. Bucket "content" e Privado mas Codigo Usa `getPublicUrl`
+O bucket `content` nao e publico, entao `getPublicUrl` retorna URLs que nao funcionam. Criadores nao conseguirao ver seu proprio conteudo publicado.
 
-| Hook | Funcao principal |
-|---|---|
-| `useCreators` | Busca profiles role=creator + agrega menor preco, contagem posts/subs |
-| `useCreatorProfile` | Perfil individual + planos + posts |
-| `usePosts` | Posts com join em profiles, mutacao de like |
-| `useConversations` | Lista conversas agrupadas por contato com unread count |
-| `useMessages` | Mensagens de uma conversa + realtime channel + envio + marcar lido |
-| `useDashboardStats` | Revenue, subscriber count, post count, recent subscribers |
-| `useSubscription` | Verifica assinatura ativa + mutacao para assinar |
+**Solucao:** Trocar para URL publica (tornar bucket publico) ou usar `createSignedUrl` para gerar links temporarios. Como se trata de conteudo de criadores visivel para assinantes, tornar o bucket publico (igual avatars/covers) e a opcao mais simples -- a protecao de acesso ao conteudo ja e feita via RLS nos posts.
 
----
+### 3. Falta Upload de Capa nas Configuracoes
+O Settings so permite upload de avatar. Criadores precisam tambem trocar a imagem de capa do perfil.
 
-## Etapa 4: Adaptar componentes e paginas (7 arquivos)
+**Solucao:** Adicionar campo de upload de capa no Settings, usando o bucket `covers`.
 
-### CreatorCard.tsx
-- `id: string | number` na interface
-- Aceitar `avatar_url`/`cover_url` com fallback para `avatar`/`cover`
+### 4. Post Sempre Criado como "free" -- Sem Selecao de Plano Minimo
+No Dashboard, ao publicar conteudo, o `min_plan` e sempre `"free"`. Criadores precisam poder escolher qual plano minimo tem acesso ao post (Fa, Super Fa, VIP).
 
-### Discover.tsx
-- Usar `useCreators()`, fallback para `mockCreators` se vazio
-- Filtros e sort continuam funcionando
+**Solucao:** Adicionar um seletor de plano minimo no formulario de publicacao do Dashboard.
 
-### CreatorProfile.tsx
-- `useCreatorProfile(id)` para dados reais
-- `useSubscription(id)` para botao de assinar funcional
-- Planos reais de `creator_plans`
-- Fallback para mock
+### 5. Redirecionamento Pos-Login para Criadores
+Apos login, todos os usuarios vao para `/feed`. Criadores deveriam ir para `/dashboard`.
 
-### Feed.tsx
-- `usePosts()` para posts reais com join
-- Like real via `likePost()` mutation
-- Sidebar com dados do usuario logado via `useAuth()`
-- Fallback para mock posts
+**Solucao:** No fluxo de login, verificar o role do perfil e redirecionar criadores para `/dashboard`.
 
-### Messages.tsx
-- `useConversations()` para lista de contatos
-- `useMessages(contactId)` para chat + realtime
-- `sendMessage()` para enviar
-- Marcar como lido automatico
-- Fallback para mock conversations
+### 6. Perfil do Criador Usa IDs Numericos (Mock) como Fallback
+A pagina `/creator/:id` tenta buscar por ID numerico nos mocks quando o real nao e encontrado. Criadores reais tem UUIDs.
 
-### Dashboard.tsx
-- `useDashboardStats()` para stats reais
-- Upload funcional com `supabase.storage.from('content').upload()`
-- INSERT em `posts` apos upload
-- Nome real do usuario via `useAuth()`
-- Grafico mantido como mock
-
-### Settings.tsx
-- Carregar perfil real via `useAuth()`
-- UPDATE em `profiles` ao salvar (nome, handle, bio, social_links)
-- Upload avatar/capa para storage + update URL
-- UPSERT em `creator_plans` (tab planos)
-- `supabase.auth.updateUser({ password })` para alterar senha
+**Solucao:** Remover fallback para mock quando ha dados reais. Mostrar estado vazio/404 se o criador nao existir.
 
 ---
 
-## Arquivos a criar (9)
-- `supabase/migrations/20260218_storage_rls_and_realtime.sql`
-- `src/types/profile.ts`
-- `src/hooks/useCreators.ts`
-- `src/hooks/useCreatorProfile.ts`
-- `src/hooks/usePosts.ts`
-- `src/hooks/useConversations.ts`
-- `src/hooks/useMessages.ts`
-- `src/hooks/useDashboardStats.ts`
-- `src/hooks/useSubscription.ts`
+## Melhorias Secundarias (nao bloqueantes, mas recomendadas)
 
-## Arquivos a modificar (7)
-- `src/components/CreatorCard.tsx`
-- `src/pages/Discover.tsx`
-- `src/pages/CreatorProfile.tsx`
-- `src/pages/Feed.tsx`
-- `src/pages/Messages.tsx`
-- `src/pages/Dashboard.tsx`
-- `src/pages/Settings.tsx`
+### 7. Stories e Sugestoes Usam Mock Fixo
+A secao de stories e sugestoes no Feed usa dados mock sempre. Deveria usar criadores reais quando disponiveis.
 
+### 8. Grafico de Receita e Estatico
+O grafico de receita no Dashboard mostra dados fixos. Idealmente calcularia a partir do historico de assinaturas.
+
+---
+
+## Plano de Implementacao
+
+### Etapa 1: CreatorRoute (protecao de rotas)
+- Criar `src/components/CreatorRoute.tsx` que verifica `profile.role === "creator"`
+- Envolver `/dashboard` e `/settings` com `CreatorRoute` no `App.tsx`
+
+### Etapa 2: Corrigir bucket de conteudo
+- Alterar bucket `content` para publico via migration/config, ou usar signed URLs no codigo
+
+### Etapa 3: Upload de capa no Settings
+- Adicionar secao de upload de capa no tab "Perfil" do Settings
+- Upload para bucket `covers` + update `cover_url` em profiles
+
+### Etapa 4: Seletor de plano minimo no Dashboard
+- Adicionar select com opcoes "Todos (free)", "Fa", "Super Fa", "VIP" antes do upload
+- Passar o valor selecionado no INSERT do post
+
+### Etapa 5: Redirecionamento por role no Login
+- No `Login.tsx`, apos login bem-sucedido, buscar profile e redirecionar criadores para `/dashboard`
+
+### Etapa 6: Remover fallback mock no CreatorProfile
+- Se `useCreatorProfile` nao retornar dados, mostrar pagina 404 em vez de mock
+- Manter mocks apenas na pagina Discover quando nao ha criadores reais
+
+### Etapa 7: Stories e sugestoes reais no Feed
+- Usar `useCreators()` para popular stories e sugestoes no Feed
+
+---
+
+## Resumo de Arquivos
+
+**Criar:**
+- `src/components/CreatorRoute.tsx`
+
+**Modificar:**
+- `src/App.tsx` (usar CreatorRoute)
+- `src/pages/Dashboard.tsx` (seletor min_plan)
+- `src/pages/Settings.tsx` (upload de capa)
+- `src/pages/Login.tsx` (redirect por role)
+- `src/pages/CreatorProfile.tsx` (remover fallback mock)
+- `src/pages/Feed.tsx` (stories/sugestoes reais)
+
+**Possivel migration:**
+- Tornar bucket `content` publico (se necessario via SQL/config)
