@@ -1,109 +1,135 @@
 
-# Correção dos 3 problemas críticos do Feed
+# 3 Melhorias: Seguir grátis, Filtrar criadores sem posts, Página de perfil do fã
 
-## Problema 1: RLS não aplicada — feed vazio para não-assinantes
+## O que será feito
 
-Confirmado pela análise do banco: a política "Authenticated users can see all posts in feed" não existe. As únicas políticas SELECT atuais na tabela `posts` são:
-- "Anyone can view free posts" — só mostra `min_plan = 'free'`
-- "Subscribers can view paid posts" — só mostra se tiver assinatura ativa
+### 1. Sistema de "Seguir" gratuito
 
-Precisamos adicionar uma terceira política permissiva (as políticas permissivas funcionam com OR):
-
+**Banco de dados — nova tabela `follows`:**
 ```sql
-CREATE POLICY "Authenticated users can see all posts in feed"
-ON public.posts FOR SELECT
-TO authenticated
-USING (true);
-```
-
-Isso faz o feed carregar todos os posts para qualquer usuário logado. O bloqueio visual (blur + cadeado) continua sendo feito no frontend pelo `locked: p.min_plan !== "free" && !mySubscriptions.has(p.creator_id)`.
-
----
-
-## Problema 2: "Assinar para ver" redireciona para o perfil em vez de abrir modal de pagamento
-
-Atualmente em `Feed.tsx` (linha 174-179):
-```tsx
-<Link to={`/creator/${post.creator.id}`}>
-  Assinar para ver
-</Link>
-```
-
-Precisamos transformar isso num botão que abre o `PixPaymentModal` diretamente, com as informações do plano mais barato do criador pré-carregadas.
-
-**Mudanças necessárias em `Feed.tsx`:**
-1. Importar `PixPaymentModal` e `useState` para controlar qual post está com o modal aberto
-2. Adicionar estado: `const [pixModal, setPixModal] = useState<{ creatorId: string; creatorName: string; planName: string; amount: number } | null>(null)`
-3. Buscar os planos dos criadores junto com os posts (já disponível via `useCreatorProfile`, mas precisamos de um hook leve para pegar o plano mais barato por `creator_id`)
-4. Substituir o `<Link>` por um `<button>` que dispara `setPixModal(...)` com os dados do plano mais barato
-5. Renderizar o `<PixPaymentModal>` no final do componente
-
-Para evitar N queries, vamos buscar os planos de todos os criadores cujos posts aparecem no feed em uma única query, usando o hook `usePosts` já existente que traz `creator_id`.
-
----
-
-## Problema 3: Comentários — ícone existe mas não faz nada
-
-O ícone de `MessageCircle` em cada post não tem lógica associada. Precisamos:
-
-**Backend (nova tabela `post_comments`):**
-```sql
-CREATE TABLE public.post_comments (
+CREATE TABLE public.follows (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  post_id uuid NOT NULL REFERENCES public.posts(id) ON DELETE CASCADE,
-  author_id uuid NOT NULL,
-  text text NOT NULL,
-  created_at timestamptz DEFAULT now() NOT NULL
+  fan_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  creator_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  created_at timestamptz DEFAULT now() NOT NULL,
+  UNIQUE (fan_id, creator_id)
 );
 
--- RLS
-ALTER TABLE public.post_comments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.follows ENABLE ROW LEVEL SECURITY;
 
--- Qualquer autenticado pode ler comentários
-CREATE POLICY "Authenticated can view comments"
-ON public.post_comments FOR SELECT TO authenticated USING (true);
-
--- Usuário autenticado comenta com seu próprio ID
-CREATE POLICY "Authenticated can insert comments"
-ON public.post_comments FOR INSERT TO authenticated
-WITH CHECK (auth.uid() = author_id);
-
--- Autor pode deletar seu próprio comentário
-CREATE POLICY "Author can delete own comments"
-ON public.post_comments FOR DELETE TO authenticated
-USING (auth.uid() = author_id);
+CREATE POLICY "Follows are public" ON public.follows FOR SELECT USING (true);
+CREATE POLICY "Fans can follow" ON public.follows FOR INSERT WITH CHECK (auth.uid() = fan_id);
+CREATE POLICY "Fans can unfollow" ON public.follows FOR DELETE USING (auth.uid() = fan_id);
 ```
 
-**Frontend:**
-1. Novo hook `useComments(postId)` — busca comentários + mutation para inserir
-2. Em `Feed.tsx`, adicionar estado `openComments: Set<string>` para controlar quais posts têm a seção de comentários aberta
-3. Ao clicar no ícone de comentário, toggle da seção abaixo do post
-4. Seção de comentários: lista de comentários existentes + campo de texto + botão de enviar
+**Hook `useFollow(creatorId)`** — novo arquivo `src/hooks/useFollow.ts`:
+- Consulta se o usuário logado já segue o criador
+- Mutation `follow()` — insert na tabela
+- Mutation `unfollow()` — delete na tabela
+- Retorna `{ isFollowing, follow, unfollow, followersCount }`
+
+**Onde aparece o botão "Seguir":**
+
+- `CreatorProfile.tsx` — ao lado dos botões de curtir/mensagem no header do perfil, um botão "Seguir" separado do botão de assinatura paga
+- `Feed.tsx` — sidebar "Sugestões para você": o link "Seguir" vira um botão real com toggle
+- `Discover.tsx` e `CreatorCard.tsx` — opcional/futuro (não muda agora para não inflar o escopo)
+
+**Lógica visual:**
+- Não seguindo → botão outline "Seguir" com ícone `UserPlus`
+- Seguindo → botão preenchido "Seguindo ✓" com ícone `UserCheck`
+- Usuário não logado → redireciona para `/login` com toast
 
 ---
 
-## Resumo das mudanças
+### 2. Filtrar criadores sem posts no feed
 
-| Prioridade | O que muda | Onde |
-|---|---|---|
-| 1 - Urgente | Nova política RLS (migration SQL) | Banco de dados |
-| 2 - Alta | Botão "Assinar para ver" abre PIX modal diretamente | `src/pages/Feed.tsx` |
-| 2 - Alta | Buscar planos dos criadores do feed para preencher modal | `src/pages/Feed.tsx` |
-| 3 - Média | Tabela `post_comments` + RLS | Banco de dados (migration) |
-| 3 - Média | Hook `useComments` | `src/hooks/useComments.ts` (novo) |
-| 3 - Média | Seção de comentários no feed | `src/pages/Feed.tsx` |
+**Onde ocorre o problema:**
+- `useCreators.ts` já busca `postCount` por criador (via query na tabela `posts`)
+- O `postsMap` está disponível, mas o retorno **não filtra** criadores com 0 posts
+
+**Correção em `useCreators.ts`:**
+Adicionar filtro no `.map()` final:
+```ts
+return profiles
+  .filter(p => (postsMap.get(p.id) ?? 0) > 0)  // ← só quem postou
+  .map((p) => ({ ... }));
+```
+
+**Impacto:**
+- Stories no feed (`realCreators.slice(0, 6)`) — só mostra criadores com posts
+- Sugestões na sidebar (`realCreators.slice(0, 5)`) — idem
+- Discover (`useCreators()`) — idem
+
+Isso não afeta o `CreatorProfile`, que usa `useCreatorProfile(id)` diretamente e não depende do `useCreators`.
+
+---
+
+### 3. Página de perfil do fã `/profile/:id`
+
+**Nova página `src/pages/FanProfile.tsx`:**
+
+Layout inspirado no perfil do criador, mas voltado para o fã:
+
+```text
+┌──────────────────────────────────────────────┐
+│  [Cover (ou gradiente padrão)]               │
+│  [Avatar]  Nome do fã                        │
+│            @handle · Membro desde X          │
+│                                              │
+│  [X seguindo]   [Y assinantes]               │
+├──────────────────────────────────────────────┤
+│  Criadores que segue          Assinando agora │
+│  [grid de avatares com link ao perfil]       │
+└──────────────────────────────────────────────┘
+```
+
+**Dados buscados:**
+- Perfil do fã via `profiles` (by `id` do param)
+- Lista de criadores que ele segue via `follows`
+- Lista de criadores que ele assina via `subscriptions` (só `creator_id`, não o valor)
+
+**Acesso à própria página:**
+- Navbar: o botão do avatar/settings passa a ter um link adicional "Meu perfil" → `/profile/:userId`
+- A rota `/profile/:id` é pública (qualquer um pode ver o perfil de um fã)
+
+**Rota adicionada em `App.tsx`:**
+```tsx
+<Route path="/profile/:id" element={<FanProfile />} />
+```
+
+**Atualizações na Navbar:**
+- O ícone de usuário (settings) passa a exibir o avatar real do perfil quando existe (`profile.avatar_url`)
+- Dropdown simples com "Meu perfil" e "Configurações" ao clicar
+
+---
+
+## Resumo técnico das mudanças
+
+| Arquivo | Mudança |
+|---|---|
+| Banco de dados | Nova tabela `follows` + RLS |
+| `src/hooks/useFollow.ts` | Novo hook |
+| `src/hooks/useCreators.ts` | Filtrar criadores com `postCount > 0` |
+| `src/pages/CreatorProfile.tsx` | Botão "Seguir" no header |
+| `src/pages/Feed.tsx` | Botão "Seguir" funcional na sidebar |
+| `src/pages/FanProfile.tsx` | Nova página |
+| `src/components/Navbar.tsx` | Avatar real + link "Meu perfil" |
+| `src/App.tsx` | Rota `/profile/:id` |
 
 ---
 
 ## Fluxo após as correções
 
-**Post bloqueado no feed:**
-1. Usuário vê post com imagem borrada + cadeado
-2. Clica em "Assinar para ver"
-3. Modal de pagamento PIX abre diretamente com o plano mais barato do criador
-4. Paga → assinatura ativa → post desbloqueado
+**Seguir um criador:**
+1. Usuário vê perfil do criador → clica "Seguir" (gratuito, ao lado do coração)
+2. Botão muda para "Seguindo ✓" sem recarregar a página
+3. Criador aparece nas sugestões como "seguido"
 
-**Comentários:**
-1. Usuário clica no ícone de comentário
-2. Seção expande abaixo do post com comentários existentes
-3. Campo de texto + botão enviar → comentário salvo no banco
+**Stories/Sugestões limpos:**
+1. `useCreators` retorna apenas criadores com ≥ 1 post
+2. Stories e sidebar do feed não mostram criadores "fantasma"
+
+**Perfil do fã:**
+1. Clica no avatar na navbar → menu com "Meu perfil"
+2. Vê própria página pública com quem segue e quem assina
+3. Qualquer pessoa pode acessar `/profile/:id` de um fã
