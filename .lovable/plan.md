@@ -1,169 +1,154 @@
 
-# 4 Melhorias: Gráfico real, Onboarding do criador, Landing com criadores reais, Preview do post
+# Página de Administração da Plataforma
 
-## O que cada melhoria resolve
+## Visão geral
 
-| Problema | Causa raiz | Solução |
-|---|---|---|
-| Gráfico hardcoded | `revenueData` é array estático no topo do arquivo | Nova função RPC no banco + hook que soma receita por mês |
-| Onboarding ausente | Após signup, criador vai direto ao feed sem configurar nada | Nova página `/onboarding` só para criadores recém-criados |
-| Landing com dados mock | `Index.tsx` usa `mockCreators.slice(0, 4)` sem consultar banco | `useCreators()` já filtra criadores com posts — só substituir a fonte |
-| Sem preview do post | O upload aciona publicação diretamente no `onChange` | Adicionar estado de "rascunho" com modal de preview antes de confirmar |
+Uma área restrita acessível apenas a administradores, com rota `/admin`, protegida por uma verificação no banco via a função `has_role(auth.uid(), 'admin')` já existente. A página terá um layout com abas laterais (sidebar) para navegar entre as seções de gestão.
 
 ---
 
-## 1. Gráfico de receita real
+## O que o admin precisa gerenciar
 
-**Banco de dados — nova função RPC:**
+Baseado nas tabelas existentes (`profiles`, `subscriptions`, `posts`, `creator_plans`, `follows`, `messages`, `post_comments`), a página terá 5 seções:
 
-A abordagem correta (conforme a boa prática) é agregar os dados no banco, não no cliente. A função calcula, para cada um dos últimos 6 meses, quantas assinaturas ativas o criador tinha e qual era o preço de cada plano — resultando na receita estimada por mês.
+### 1. Visão Geral (Dashboard)
+Métricas globais da plataforma em cards:
+- Total de criadores cadastrados
+- Total de fãs cadastrados
+- Total de assinaturas ativas
+- Receita total estimada (soma de todos os planos ativos)
+- Total de posts publicados
+- Gráfico de crescimento de assinantes por mês
 
+### 2. Gestão de Usuários
+Tabela paginada com todos os usuários (fãs e criadores):
+- Colunas: Avatar, Nome, Handle, Role, Data de cadastro, Nº de assinaturas
+- Filtro por role (todos / criadores / fãs)
+- Busca por nome ou handle
+- Ação: **Banir usuário** (deleta o perfil → cascade remove posts, assinaturas etc.)
+- Ação: **Ver perfil** (link para `/creator/:id` ou `/profile/:id`)
+
+### 3. Gestão de Criadores
+Tabela focada somente em criadores:
+- Colunas: Nome, Handle, Categoria, Assinantes ativos, Receita estimada, Posts publicados
+- Ordenação por receita ou assinantes
+- Ação: **Ver planos** (modal com os 3 planos e preços do criador)
+- Ação: **Ver posts** (link para o perfil do criador)
+
+### 4. Gestão de Posts
+Tabela de todos os posts publicados na plataforma:
+- Colunas: Thumbnail (se tiver mídia), Criador, Legenda (truncada), Plano mínimo, Data, Nº de likes, Nº de comentários
+- Filtro por plano (free / fan / superfan / vip)
+- Ação: **Deletar post** (remove do banco — a política RLS `Creators can delete their own posts` só vale para o próprio criador; o admin precisará de uma função RPC com `SECURITY DEFINER` para deletar qualquer post)
+
+### 5. Financeiro
+- Total de receita estimada por mês (reaproveitando a lógica do `get_creator_monthly_revenue` mas para todos os criadores)
+- Top 10 criadores por receita
+- Tabela de todas as assinaturas ativas com: criador, fã, plano, valor, data de início
+
+---
+
+## Arquitetura técnica
+
+### Proteção de rota
+
+Novo componente `AdminRoute` que usa `has_role` via consulta ao banco (não localStorage):
+
+```text
+/admin → AdminRoute verifica role 'admin' no banco → renderiza ou redireciona para /
+```
+
+### Banco de dados — mudanças necessárias
+
+**Nova função RPC para deletar qualquer post (admin):**
 ```sql
-CREATE OR REPLACE FUNCTION get_creator_monthly_revenue(p_creator_id uuid)
-RETURNS TABLE (month text, value numeric)
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = 'public'
-AS $$
+CREATE OR REPLACE FUNCTION admin_delete_post(p_post_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  IF NOT has_role(auth.uid(), 'admin') THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+  DELETE FROM posts WHERE id = p_post_id;
+END; $$;
+```
+
+**Nova função RPC para métricas globais:**
+```sql
+CREATE OR REPLACE FUNCTION get_platform_stats()
+RETURNS TABLE (
+  total_creators bigint,
+  total_fans bigint,
+  total_active_subs bigint,
+  total_posts bigint,
+  estimated_revenue numeric
+) LANGUAGE sql SECURITY DEFINER AS $$
   SELECT
-    TO_CHAR(generate_series, 'Mon', 'pt_BR') AS month,
-    COALESCE((
-      SELECT SUM(cp.price)
-      FROM subscriptions s
-      JOIN creator_plans cp ON cp.creator_id = s.creator_id
-        AND cp.plan_name = s.plan
-      WHERE s.creator_id = p_creator_id
-        AND s.active = true
-        AND DATE_TRUNC('month', s.created_at) <= generate_series
-    ), 0) AS value
-  FROM generate_series(
-    DATE_TRUNC('month', NOW() - INTERVAL '5 months'),
-    DATE_TRUNC('month', NOW()),
-    INTERVAL '1 month'
-  )
-  ORDER BY generate_series;
+    (SELECT COUNT(*) FROM profiles WHERE role = 'creator'),
+    (SELECT COUNT(*) FROM profiles WHERE role = 'fan'),
+    (SELECT COUNT(*) FROM subscriptions WHERE active = true),
+    (SELECT COUNT(*) FROM posts),
+    (SELECT COALESCE(SUM(cp.price), 0)
+     FROM subscriptions s
+     JOIN creator_plans cp ON cp.creator_id = s.creator_id AND cp.plan_name = s.plan
+     WHERE s.active = true);
 $$;
 ```
 
-**Hook `useMonthlyRevenue(creatorId)`** — novo arquivo `src/hooks/useMonthlyRevenue.ts`:
-- Chama `supabase.rpc('get_creator_monthly_revenue', { p_creator_id })` 
-- Retorna `{ data, isLoading }`
+### Novos arquivos
 
-**Dashboard.tsx:**
-- Remove a constante `revenueData` hardcoded (linhas 20–27)
-- Importa e usa `useMonthlyRevenue(user?.id)` 
-- Passa os dados reais para o `<AreaChart>`
-- Enquanto carrega: skeleton animado no lugar do gráfico
-
----
-
-## 2. Onboarding do criador
-
-**Nova rota `/onboarding`** — acessível apenas para criadores.
-
-**Fluxo:**
-
-```text
-Signup como criador
-       ↓
-  navigate("/onboarding")   ← em vez de "/feed"
-       ↓
-┌─────────────────────────────────────┐
-│  Boas-vindas, [Nome]!               │
-│  Complete seu perfil para começar   │
-│                                     │
-│  [Foto de perfil]  [Foto de capa]   │
-│  Bio .............................   │
-│  Preço Fã: R$ ___                   │
-│  Preço Super Fã: R$ ___             │
-│  Preço VIP: R$ ___                  │
-│                                     │
-│  [Ir para o Dashboard →]            │
-└─────────────────────────────────────┘
-```
-
-**Arquivos afetados:**
-
-- `src/pages/Onboarding.tsx` — nova página:
-  - Upload de avatar/capa (igual ao Settings)
-  - Textarea para bio
-  - 3 inputs de preço (fan, superfan, vip)
-  - Ao salvar: update em `profiles` + upsert em `creator_plans` → navega para `/dashboard`
-  - Botão "Pular por agora" → vai direto para `/dashboard`
-
-- `src/pages/Signup.tsx` — alterar o `navigate` após signup bem-sucedido:
-  - Se `role === "creator"` → `navigate("/onboarding")`
-  - Se `role === "fan"` → `navigate("/feed")` (mantém atual)
-
-- `src/App.tsx` — nova rota:
-  ```tsx
-  <Route path="/onboarding" element={<CreatorRoute><Onboarding /></CreatorRoute>} />
-  ```
-
----
-
-## 3. Landing page com criadores reais
-
-**Index.tsx:**
-- Adiciona `import { useCreators } from "@/hooks/useCreators"` 
-- `const { data: realCreators } = useCreators()` dentro do componente
-- `const featured = realCreators?.length ? realCreators.slice(0, 4) : mockCreators.slice(0, 4)`
-- A seção "Criadores populares" exibe os criadores ordenados por `subscribers` (maior primeiro):
-  ```ts
-  const featured = [...(realCreators ?? [])]
-    .sort((a, b) => b.subscribers - a.subscribers)
-    .slice(0, 4);
-  ```
-- Se não há criadores reais ainda, cai de volta para os mocks (comportamento atual)
-
-Essa mudança é simples — `useCreators` já faz todo o trabalho pesado e já filtra quem tem posts.
-
----
-
-## 4. Preview do post antes de publicar
-
-**Dashboard.tsx — estado de rascunho:**
-
-Adicionar estado `previewFile` e um modal de confirmação antes de publicar:
-
-```text
-Criador preenche legenda + seleciona plano
-         ↓
-  Clica na área de upload
-         ↓
-  Seleciona arquivo → arquivo entra em estado de "rascunho"
-         ↓
-┌──────────────────────────────────────┐
-│  Preview do post                     │
-│                                      │
-│  [thumbnail da imagem/vídeo]         │
-│  Legenda: "..."                      │
-│  Acesso: Fã                          │
-│                                      │
-│  [Cancelar]     [Publicar agora →]   │
-└──────────────────────────────────────┘
-         ↓
-  Clica "Publicar" → upload + insert no banco
-```
-
-**Implementação:**
-- Adicionar estado: `previewFile: File | null`, `previewUrl: string | null`, `previewOpen: boolean`
-- No `onChange` do input: em vez de chamar `handleUpload` diretamente, setar o arquivo em estado e abrir o modal
-- Usar o componente `Dialog` já disponível no projeto (`src/components/ui/dialog.tsx`)
-- No modal: `<img>` ou `<video>` com `src={previewUrl}` (via `URL.createObjectURL(file)`)
-- Botão "Publicar agora" no modal executa o upload real
-- Limpa o `previewUrl` com `URL.revokeObjectURL` ao fechar/publicar
-
----
-
-## Resumo das mudanças por arquivo
-
-| Arquivo | Mudança |
+| Arquivo | Função |
 |---|---|
-| Banco de dados | Nova função RPC `get_creator_monthly_revenue` |
-| `src/hooks/useMonthlyRevenue.ts` | Novo hook que chama a RPC |
-| `src/pages/Dashboard.tsx` | Remove hardcode, usa `useMonthlyRevenue`, adiciona modal de preview |
-| `src/pages/Signup.tsx` | Redireciona criador para `/onboarding` |
-| `src/pages/Onboarding.tsx` | Nova página de onboarding |
-| `src/pages/Index.tsx` | Usa `useCreators()` ordenado por assinantes |
-| `src/App.tsx` | Nova rota `/onboarding` |
+| `src/components/AdminRoute.tsx` | Guarda a rota `/admin`, verifica role admin no banco |
+| `src/pages/Admin.tsx` | Página principal com layout de sidebar + abas |
+| `src/hooks/usePlatformStats.ts` | Chama `get_platform_stats()` RPC |
+| `src/hooks/useAdminUsers.ts` | Busca todos os perfis com contagem de assinaturas |
+| `src/hooks/useAdminPosts.ts` | Busca todos os posts com joins para criador |
+
+### Layout da página
+
+```text
+┌─────────────────────────────────────────────────────────┐
+│  🔥 Adore Admin Panel                   [sair do admin] │
+├──────────────┬──────────────────────────────────────────┤
+│              │                                          │
+│  📊 Visão    │   [ área de conteúdo da aba ativa ]      │
+│     Geral    │                                          │
+│              │                                          │
+│  👥 Usuários │                                          │
+│              │                                          │
+│  ✨ Criadores│                                          │
+│              │                                          │
+│  📝 Posts    │                                          │
+│              │                                          │
+│  💰 Financ.  │                                          │
+│              │                                          │
+└──────────────┴──────────────────────────────────────────┘
+```
+
+A sidebar usa o componente `Sidebar` do shadcn/ui já instalado no projeto, com `SidebarProvider` wrappando a página. No mobile, a sidebar vira um drawer off-canvas.
+
+---
+
+## Sequência de implementação
+
+1. Migração de banco: criar as 2 funções RPC (`get_platform_stats` e `admin_delete_post`)
+2. `AdminRoute.tsx`: verifica `has_role` via query, redireciona se não for admin
+3. `usePlatformStats.ts`, `useAdminUsers.ts`, `useAdminPosts.ts`: hooks de dados
+4. `Admin.tsx`: página completa com sidebar e 5 abas
+5. `App.tsx`: adicionar a rota `/admin`
+
+---
+
+## Arquivos afetados
+
+| Arquivo | Ação |
+|---|---|
+| Banco de dados | 2 novas funções RPC |
+| `src/components/AdminRoute.tsx` | Criado |
+| `src/pages/Admin.tsx` | Criado |
+| `src/hooks/usePlatformStats.ts` | Criado |
+| `src/hooks/useAdminUsers.ts` | Criado |
+| `src/hooks/useAdminPosts.ts` | Criado |
+| `src/App.tsx` | Nova rota `/admin` |
+| `src/integrations/supabase/types.ts` | Atualizado automaticamente |
+
