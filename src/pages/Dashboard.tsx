@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import {
   DollarSign, Users, FileImage, Star, TrendingUp, Upload, Bell, Settings,
-  ArrowUpRight, ArrowDownRight, Plus
+  ArrowUpRight, ArrowDownRight, Plus, Eye, X
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
@@ -11,20 +11,17 @@ import {
 } from "recharts";
 import { mockCreators } from "@/data/creators";
 import { useDashboardStats } from "@/hooks/useDashboardStats";
+import { useMonthlyRevenue } from "@/hooks/useMonthlyRevenue";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-const revenueData = [
-  { month: "Set", value: 3200 },
-  { month: "Out", value: 4100 },
-  { month: "Nov", value: 3800 },
-  { month: "Dez", value: 5200 },
-  { month: "Jan", value: 4700 },
-  { month: "Fev", value: 6100 },
-];
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
+} from "@/components/ui/dialog";
 
 const planColors: Record<string, string> = {
   "Fã": "bg-muted/50 text-muted-foreground",
@@ -35,10 +32,14 @@ const planColors: Record<string, string> = {
 const Dashboard = () => {
   const { profile, user } = useAuth();
   const { data: dashStats } = useDashboardStats();
+  const { data: revenueData, isLoading: revenueLoading } = useMonthlyRevenue(user?.id);
   const [uploadHover, setUploadHover] = useState(false);
   const [postText, setPostText] = useState("");
   const [minPlan, setMinPlan] = useState("free");
   const [uploading, setUploading] = useState(false);
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const displayName = profile?.name || "Criador";
@@ -90,23 +91,37 @@ const Dashboard = () => {
     },
   ];
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !user) return;
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setPreviewFile(file);
+    setPreviewUrl(url);
+    setPreviewOpen(true);
+    // Reset input so the same file can be selected again
+    e.target.value = "";
+  };
 
+  const closePreview = () => {
+    setPreviewOpen(false);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewFile(null);
+    setPreviewUrl(null);
+  };
+
+  const handlePublish = async () => {
+    if (!previewFile || !user) return;
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop();
+      const ext = previewFile.name.split(".").pop();
       const path = `${user.id}/${Date.now()}.${ext}`;
       const { error: uploadError } = await supabase.storage
         .from("content")
-        .upload(path, file);
-
+        .upload(path, previewFile);
       if (uploadError) throw uploadError;
 
       const { data: urlData } = supabase.storage.from("content").getPublicUrl(path);
-
-      const mediaType = file.type.startsWith("video") ? "video" : "image";
+      const mediaType = previewFile.type.startsWith("video") ? "video" : "image";
       const { error: postError } = await supabase.from("posts").insert({
         creator_id: user.id,
         text: postText || null,
@@ -114,11 +129,12 @@ const Dashboard = () => {
         media_type: mediaType,
         min_plan: minPlan,
       });
-
       if (postError) throw postError;
+
       toast.success("Conteúdo publicado com sucesso!");
       setPostText("");
       setMinPlan("free");
+      closePreview();
     } catch (err: any) {
       toast.error(err.message || "Erro ao publicar");
     } finally {
@@ -252,7 +268,7 @@ const Dashboard = () => {
               </Select>
             </div>
           </div>
-          <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleUpload} />
+          <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileSelect} />
           <div
             onClick={() => !uploading && fileRef.current?.click()}
             onMouseEnter={() => setUploadHover(true)}
@@ -266,12 +282,11 @@ const Dashboard = () => {
             </div>
             <div className="text-center">
               <p className="text-sm font-semibold text-foreground">
-                {uploading ? "Enviando..." : "Arraste arquivos ou clique para fazer upload"}
+                Arraste arquivos ou clique para fazer upload
               </p>
               <p className="text-xs text-muted-foreground mt-1">Fotos e vídeos — máx. 500MB</p>
             </div>
             <Button
-              disabled={uploading}
               className="rounded-full bg-gradient-primary text-primary-foreground shadow-glow hover:scale-105 transition-transform mt-2"
             >
               <Plus className="h-4 w-4 mr-2" />
@@ -280,6 +295,52 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Preview Modal */}
+      <Dialog open={previewOpen} onOpenChange={(open) => { if (!open) closePreview(); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="h-4 w-4 text-primary" />
+              Preview do post
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            {previewUrl && previewFile && (
+              previewFile.type.startsWith("video") ? (
+                <video src={previewUrl} controls className="w-full max-h-64 rounded-xl object-contain bg-black" />
+              ) : (
+                <img src={previewUrl} alt="Preview" className="w-full max-h-64 rounded-xl object-contain bg-muted/20" />
+              )
+            )}
+            <div className="flex flex-col gap-1 rounded-xl border border-border/50 bg-muted/10 p-4">
+              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Legenda</p>
+              <p className="text-sm text-foreground">
+                {postText || <span className="text-muted-foreground italic">Sem legenda</span>}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Acesso mínimo:</span>
+              <span className="text-xs font-semibold text-primary bg-primary/10 rounded-full px-2 py-0.5">
+                {minPlan === "free" ? "🌐 Todos" : minPlan === "fan" ? "💖 Fã" : minPlan === "superfan" ? "🔥 Super Fã" : "💎 VIP"}
+              </span>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={closePreview} className="gap-2">
+              <X className="h-4 w-4" />
+              Cancelar
+            </Button>
+            <Button
+              onClick={handlePublish}
+              disabled={uploading}
+              className="bg-gradient-primary text-primary-foreground shadow-glow hover:scale-[1.02] transition-transform gap-2"
+            >
+              {uploading ? "Publicando..." : "Publicar agora →"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
