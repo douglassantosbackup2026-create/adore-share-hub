@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Camera, Save, Eye, EyeOff, Shield, CreditCard, Banknote, Instagram, Twitter, Youtube } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
@@ -7,9 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { mockCreators } from "@/data/creators";
-
-const me = mockCreators[0];
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 const withdrawals = [
   { id: 1, amount: "R$ 3.200,00", date: "01/02/2026", status: "Concluído" },
@@ -18,13 +18,16 @@ const withdrawals = [
 ];
 
 const Settings = () => {
-  const [profile, setProfile] = useState({
-    name: me.name,
-    handle: me.handle,
-    bio: "Especialista em fitness e lifestyle saudável. Treinadora certificada com 8 anos de experiência. 💪🌿",
-    instagram: "@anabeatriz",
-    twitter: "@anabeatriz",
-    youtube: "Ana Beatriz Fitness",
+  const { profile: authProfile, user } = useAuth();
+  const avatarRef = useRef<HTMLInputElement>(null);
+
+  const [profileForm, setProfileForm] = useState({
+    name: "",
+    handle: "",
+    bio: "",
+    instagram: "",
+    twitter: "",
+    youtube: "",
   });
 
   const [plans, setPlans] = useState({
@@ -36,20 +39,135 @@ const Settings = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [twoFactor, setTwoFactor] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
-  const handleSave = () => {
+  // Load profile data
+  useEffect(() => {
+    if (authProfile) {
+      const social = (authProfile.social_links as any) ?? {};
+      setProfileForm({
+        name: authProfile.name || "",
+        handle: authProfile.handle || "",
+        bio: authProfile.bio || "",
+        instagram: social.instagram || "",
+        twitter: social.twitter || "",
+        youtube: social.youtube || "",
+      });
+    }
+  }, [authProfile]);
+
+  // Load plans
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("creator_plans")
+      .select("*")
+      .eq("creator_id", user.id)
+      .then(({ data }) => {
+        if (data?.length) {
+          const map: Record<string, string> = {};
+          data.forEach((p) => {
+            const key = p.plan_name.toLowerCase().replace(/\s/g, "");
+            if (key === "fã" || key === "fa") map.fan = p.price.toString();
+            else if (key.includes("super")) map.superfan = p.price.toString();
+            else if (key.includes("vip")) map.vip = p.price.toString();
+          });
+          setPlans((prev) => ({ ...prev, ...map }));
+        }
+      });
+  }, [user]);
+
+  const handleSaveProfile = async () => {
+    if (!user) return;
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        name: profileForm.name,
+        handle: profileForm.handle,
+        bio: profileForm.bio,
+        social_links: {
+          instagram: profileForm.instagram,
+          twitter: profileForm.twitter,
+          youtube: profileForm.youtube,
+        },
+      })
+      .eq("id", user.id);
+
+    if (error) {
+      toast.error("Erro ao salvar perfil");
+    } else {
+      setSaved(true);
+      toast.success("Perfil salvo!");
+      setTimeout(() => setSaved(false), 2000);
+    }
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    const ext = file.name.split(".").pop();
+    const path = `${user.id}/${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file);
+    if (uploadError) {
+      toast.error("Erro ao enviar avatar");
+      return;
+    }
+
+    const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
+    await supabase.from("profiles").update({ avatar_url: urlData.publicUrl }).eq("id", user.id);
+    toast.success("Avatar atualizado!");
+  };
+
+  const handleSavePlans = async () => {
+    if (!user) return;
+    const planEntries = [
+      { plan_name: "Fã", price: parseFloat(plans.fan) },
+      { plan_name: "Super Fã", price: parseFloat(plans.superfan) },
+      { plan_name: "VIP", price: parseFloat(plans.vip) },
+    ];
+
+    for (const entry of planEntries) {
+      await supabase
+        .from("creator_plans")
+        .upsert(
+          { creator_id: user.id, plan_name: entry.plan_name, price: entry.price },
+          { onConflict: "creator_id,plan_name", ignoreDuplicates: false }
+        );
+    }
     setSaved(true);
+    toast.success("Planos salvos!");
     setTimeout(() => setSaved(false), 2000);
   };
+
+  const handleChangePassword = async () => {
+    if (newPassword.length < 8) {
+      toast.error("A senha deve ter pelo menos 8 caracteres");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("As senhas não coincidem");
+      return;
+    }
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success("Senha atualizada!");
+      setNewPassword("");
+      setConfirmPassword("");
+    }
+  };
+
+  const avatarUrl = authProfile?.avatar_url || "";
 
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
       <div className="container max-w-3xl pt-24 pb-16">
         <div className="mb-8">
-          <h1 className="font-display text-3xl font-bold text-foreground">
-            Configurações
-          </h1>
+          <h1 className="font-display text-3xl font-bold text-foreground">Configurações</h1>
           <p className="text-muted-foreground mt-1">Gerencie sua conta e preferências</p>
         </div>
 
@@ -74,35 +192,40 @@ const Settings = () => {
           {/* PERFIL */}
           <TabsContent value="profile">
             <div className="glass-card rounded-2xl p-6 flex flex-col gap-6">
-              {/* Avatar */}
               <div className="flex items-center gap-4">
                 <div className="relative">
-                  <img src={me.avatar} alt={me.name} className="h-20 w-20 rounded-full object-cover ring-2 ring-primary/40" />
-                  <button className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full bg-gradient-primary shadow-glow">
+                  <input ref={avatarRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt="" className="h-20 w-20 rounded-full object-cover ring-2 ring-primary/40" />
+                  ) : (
+                    <div className="h-20 w-20 rounded-full bg-muted ring-2 ring-primary/40 flex items-center justify-center text-2xl font-bold text-muted-foreground">
+                      {profileForm.name.charAt(0).toUpperCase() || "?"}
+                    </div>
+                  )}
+                  <button onClick={() => avatarRef.current?.click()} className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full bg-gradient-primary shadow-glow">
                     <Camera className="h-3.5 w-3.5 text-primary-foreground" />
                   </button>
                 </div>
                 <div>
-                  <p className="font-semibold text-foreground">{profile.name}</p>
-                  <p className="text-sm text-muted-foreground">@{profile.handle}</p>
-                  <button className="text-xs text-primary hover:underline mt-1">Alterar foto de capa</button>
+                  <p className="font-semibold text-foreground">{profileForm.name}</p>
+                  <p className="text-sm text-muted-foreground">@{profileForm.handle}</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
                   <Label>Nome</Label>
-                  <Input className="bg-muted/20 border-border/50" value={profile.name} onChange={(e) => setProfile(p => ({ ...p, name: e.target.value }))} />
+                  <Input className="bg-muted/20 border-border/50" value={profileForm.name} onChange={(e) => setProfileForm((p) => ({ ...p, name: e.target.value }))} />
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label>Handle</Label>
-                  <Input className="bg-muted/20 border-border/50" value={profile.handle} onChange={(e) => setProfile(p => ({ ...p, handle: e.target.value }))} />
+                  <Input className="bg-muted/20 border-border/50" value={profileForm.handle} onChange={(e) => setProfileForm((p) => ({ ...p, handle: e.target.value }))} />
                 </div>
               </div>
 
               <div className="flex flex-col gap-2">
                 <Label>Biografia</Label>
-                <Textarea className="bg-muted/20 border-border/50 resize-none min-h-[100px]" value={profile.bio} onChange={(e) => setProfile(p => ({ ...p, bio: e.target.value }))} />
+                <Textarea className="bg-muted/20 border-border/50 resize-none min-h-[100px]" value={profileForm.bio} onChange={(e) => setProfileForm((p) => ({ ...p, bio: e.target.value }))} />
               </div>
 
               <div className="flex flex-col gap-3">
@@ -117,15 +240,15 @@ const Settings = () => {
                     <Input
                       className="pl-9 bg-muted/20 border-border/50"
                       placeholder={placeholder}
-                      value={profile[key as keyof typeof profile]}
-                      onChange={(e) => setProfile(p => ({ ...p, [key]: e.target.value }))}
+                      value={profileForm[key as keyof typeof profileForm]}
+                      onChange={(e) => setProfileForm((p) => ({ ...p, [key]: e.target.value }))}
                     />
                   </div>
                 ))}
               </div>
 
               <Button
-                onClick={handleSave}
+                onClick={handleSaveProfile}
                 className={`self-end rounded-full px-6 transition-all ${saved ? "bg-green-500 hover:bg-green-500" : "bg-gradient-primary shadow-glow hover:scale-105"} text-primary-foreground`}
               >
                 <Save className="h-4 w-4 mr-2" />
@@ -155,13 +278,16 @@ const Settings = () => {
                       type="number"
                       className="w-24 bg-muted/20 border-border/50 text-right"
                       value={plans[key as keyof typeof plans]}
-                      onChange={(e) => setPlans(p => ({ ...p, [key]: e.target.value }))}
+                      onChange={(e) => setPlans((p) => ({ ...p, [key]: e.target.value }))}
                     />
                     <span className="text-sm text-muted-foreground">/mês</span>
                   </div>
                 </div>
               ))}
-              <Button onClick={handleSave} className={`self-end rounded-full px-6 transition-all ${saved ? "bg-green-500 hover:bg-green-500" : "bg-gradient-primary shadow-glow hover:scale-105"} text-primary-foreground`}>
+              <Button
+                onClick={handleSavePlans}
+                className={`self-end rounded-full px-6 transition-all ${saved ? "bg-green-500 hover:bg-green-500" : "bg-gradient-primary shadow-glow hover:scale-105"} text-primary-foreground`}
+              >
                 <Save className="h-4 w-4 mr-2" />
                 {saved ? "Salvo!" : "Salvar planos"}
               </Button>
@@ -171,7 +297,6 @@ const Settings = () => {
           {/* PAGAMENTOS */}
           <TabsContent value="payments">
             <div className="flex flex-col gap-4">
-              {/* Bank info */}
               <div className="glass-card rounded-2xl p-6 flex flex-col gap-4">
                 <div className="flex items-center gap-2">
                   <Banknote className="h-5 w-5 text-primary" />
@@ -204,7 +329,6 @@ const Settings = () => {
                 </Button>
               </div>
 
-              {/* Withdrawal history */}
               <div className="glass-card rounded-2xl p-6 flex flex-col gap-4">
                 <div className="flex items-center gap-2">
                   <CreditCard className="h-5 w-5 text-primary" />
@@ -235,24 +359,32 @@ const Settings = () => {
                 </div>
                 <div className="flex flex-col gap-3">
                   <div className="flex flex-col gap-2">
-                    <Label>Senha atual</Label>
+                    <Label>Nova senha</Label>
                     <div className="relative">
-                      <Input type={showPassword ? "text" : "password"} className="pr-10 bg-muted/20 border-border/50" placeholder="••••••••" />
+                      <Input
+                        type={showPassword ? "text" : "password"}
+                        className="pr-10 bg-muted/20 border-border/50"
+                        placeholder="Mínimo 8 caracteres"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                      />
                       <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
                   </div>
                   <div className="flex flex-col gap-2">
-                    <Label>Nova senha</Label>
-                    <Input type="password" className="bg-muted/20 border-border/50" placeholder="Mínimo 8 caracteres" />
-                  </div>
-                  <div className="flex flex-col gap-2">
                     <Label>Confirmar nova senha</Label>
-                    <Input type="password" className="bg-muted/20 border-border/50" placeholder="Repita a nova senha" />
+                    <Input
+                      type="password"
+                      className="bg-muted/20 border-border/50"
+                      placeholder="Repita a nova senha"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                    />
                   </div>
                 </div>
-                <Button className="self-end rounded-full px-6 bg-gradient-primary text-primary-foreground shadow-glow hover:scale-105 transition-transform">
+                <Button onClick={handleChangePassword} className="self-end rounded-full px-6 bg-gradient-primary text-primary-foreground shadow-glow hover:scale-105 transition-transform">
                   Atualizar senha
                 </Button>
               </div>

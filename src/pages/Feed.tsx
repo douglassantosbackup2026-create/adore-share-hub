@@ -3,12 +3,16 @@ import { Link } from "react-router-dom";
 import { Heart, MessageCircle, Share2, Lock, MoreHorizontal, Bookmark } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { mockCreators } from "@/data/creators";
+import { usePosts } from "@/hooks/usePosts";
+import { useAuth } from "@/contexts/AuthContext";
+import { formatDistanceToNow } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 const stories = mockCreators.slice(0, 6);
 
 const mockPosts = [
   {
-    id: 1,
+    id: "mock-1",
     creator: mockCreators[0],
     time: "2h atrás",
     text: "Treino de hoje foi incrível! 💪 Novo recorde pessoal no supino.",
@@ -19,7 +23,7 @@ const mockPosts = [
     liked: false,
   },
   {
-    id: 2,
+    id: "mock-2",
     creator: mockCreators[1],
     time: "4h atrás",
     text: "Novo ensaio fotográfico exclusivo 🎨 Para assinantes VIP.",
@@ -30,7 +34,7 @@ const mockPosts = [
     liked: false,
   },
   {
-    id: 3,
+    id: "mock-3",
     creator: mockCreators[4],
     time: "6h atrás",
     text: "Aula gratuita de finanças pessoais hoje às 20h! Não perca 📊",
@@ -41,7 +45,7 @@ const mockPosts = [
     liked: true,
   },
   {
-    id: 4,
+    id: "mock-4",
     creator: mockCreators[6],
     time: "1d atrás",
     text: "Look do dia ✨ Esse combo de verão está me apaixonando.",
@@ -56,17 +60,54 @@ const mockPosts = [
 const suggestions = mockCreators.slice(2, 5);
 
 const Feed = () => {
-  const [posts, setPosts] = useState(mockPosts);
+  const { posts: realPosts, likePost } = usePosts();
+  const { user, profile } = useAuth();
+  const [localLikes, setLocalLikes] = useState<Set<string>>(new Set());
 
-  const toggleLike = (id: number) => {
-    setPosts((prev) =>
-      prev.map((p) =>
-        p.id === id
-          ? { ...p, liked: !p.liked, likes: p.liked ? p.likes - 1 : p.likes + 1 }
-          : p
-      )
-    );
+  // Use real posts or fallback to mock
+  const useReal = realPosts.length > 0;
+
+  const feedPosts = useReal
+    ? realPosts.map((p) => ({
+        id: p.id,
+        creator: {
+          id: p.creator_id,
+          name: p.creator.name,
+          handle: p.creator.handle ?? "",
+          avatar: p.creator.avatar_url ?? mockCreators[0].avatar,
+          price: 0,
+        },
+        time: formatDistanceToNow(new Date(p.created_at), { addSuffix: true, locale: ptBR }),
+        text: p.text,
+        image: p.media_url,
+        locked: p.min_plan !== "free",
+        likes: p.likes_count,
+        comments: 0,
+        liked: localLikes.has(p.id),
+      }))
+    : mockPosts;
+
+  const [mockState, setMockState] = useState(mockPosts);
+
+  const toggleLike = (id: string) => {
+    if (useReal) {
+      const post = realPosts.find((p) => p.id === id);
+      if (post && !localLikes.has(id)) {
+        setLocalLikes((prev) => new Set(prev).add(id));
+        likePost.mutate({ postId: id, currentLikes: post.likes_count });
+      }
+    } else {
+      setMockState((prev) =>
+        prev.map((p) =>
+          p.id === id
+            ? { ...p, liked: !p.liked, likes: p.liked ? p.likes - 1 : p.likes + 1 }
+            : p
+        )
+      );
+    }
   };
+
+  const displayPosts = useReal ? feedPosts : mockState;
 
   return (
     <div className="min-h-screen bg-background">
@@ -95,9 +136,8 @@ const Feed = () => {
           </div>
 
           {/* Posts */}
-          {posts.map((post) => (
+          {displayPosts.map((post) => (
             <div key={post.id} className="glass-card rounded-2xl overflow-hidden">
-              {/* Post header */}
               <div className="flex items-center justify-between p-4">
                 <Link to={`/creator/${post.creator.id}`} className="flex items-center gap-3">
                   <img src={post.creator.avatar} alt={post.creator.name} className="h-10 w-10 rounded-full object-cover ring-2 ring-primary/30" />
@@ -111,35 +151,34 @@ const Feed = () => {
                 </button>
               </div>
 
-              {/* Post text */}
               {post.text && (
                 <p className="px-4 pb-3 text-sm text-foreground">{post.text}</p>
               )}
 
-              {/* Post image */}
-              <div className="relative">
-                <img
-                  src={post.image}
-                  alt="Post"
-                  className={`w-full aspect-[4/3] object-cover ${post.locked ? "blur-xl scale-105" : ""}`}
-                />
-                {post.locked && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/40 backdrop-blur-sm">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-primary shadow-glow">
-                      <Lock className="h-6 w-6 text-primary-foreground" />
+              {post.image && (
+                <div className="relative">
+                  <img
+                    src={post.image}
+                    alt="Post"
+                    className={`w-full aspect-[4/3] object-cover ${post.locked ? "blur-xl scale-105" : ""}`}
+                  />
+                  {post.locked && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/40 backdrop-blur-sm">
+                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-primary shadow-glow">
+                        <Lock className="h-6 w-6 text-primary-foreground" />
+                      </div>
+                      <p className="text-sm font-semibold text-foreground">Conteúdo exclusivo</p>
+                      <Link
+                        to={`/creator/${post.creator.id}`}
+                        className="rounded-full bg-gradient-primary px-5 py-2 text-sm font-semibold text-primary-foreground shadow-glow hover:scale-105 transition-transform"
+                      >
+                        Assinar para ver
+                      </Link>
                     </div>
-                    <p className="text-sm font-semibold text-foreground">Conteúdo exclusivo</p>
-                    <Link
-                      to={`/creator/${post.creator.id}`}
-                      className="rounded-full bg-gradient-primary px-5 py-2 text-sm font-semibold text-primary-foreground shadow-glow hover:scale-105 transition-transform"
-                    >
-                      Assinar por R${post.creator.price}/mês
-                    </Link>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
 
-              {/* Actions */}
               <div className="flex items-center justify-between p-4">
                 <div className="flex items-center gap-4">
                   <button
@@ -167,18 +206,22 @@ const Feed = () => {
 
         {/* Sidebar */}
         <aside className="hidden lg:flex flex-col gap-4 w-72 flex-shrink-0">
-          {/* User card */}
           <div className="glass-card rounded-2xl p-4 flex items-center gap-3">
             <div className="h-12 w-12 rounded-full bg-gradient-primary flex items-center justify-center shadow-glow flex-shrink-0">
-              <span className="text-primary-foreground font-bold text-lg">V</span>
+              {profile?.avatar_url ? (
+                <img src={profile.avatar_url} alt="" className="h-full w-full rounded-full object-cover" />
+              ) : (
+                <span className="text-primary-foreground font-bold text-lg">
+                  {(profile?.name || "V").charAt(0).toUpperCase()}
+                </span>
+              )}
             </div>
             <div className="min-w-0">
-              <p className="font-semibold text-foreground text-sm">Você</p>
-              <p className="text-xs text-muted-foreground">@voce</p>
+              <p className="font-semibold text-foreground text-sm">{profile?.name || "Você"}</p>
+              <p className="text-xs text-muted-foreground">@{profile?.handle || "voce"}</p>
             </div>
           </div>
 
-          {/* Suggestions */}
           <div className="glass-card rounded-2xl p-4 flex flex-col gap-3">
             <p className="text-sm font-semibold text-foreground">Sugestões para você</p>
             {suggestions.map((creator) => (
