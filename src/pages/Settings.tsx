@@ -18,7 +18,7 @@ const withdrawals = [
 ];
 
 const Settings = () => {
-  const { profile: authProfile, user } = useAuth();
+  const { profile: authProfile, user, refreshProfile } = useAuth();
   const avatarRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
 
@@ -83,7 +83,8 @@ const Settings = () => {
     if (!user) return;
     const { error } = await supabase
       .from("profiles")
-      .update({
+      .upsert({
+        id: user.id,
         name: profileForm.name,
         handle: profileForm.handle,
         bio: profileForm.bio,
@@ -92,14 +93,14 @@ const Settings = () => {
           twitter: profileForm.twitter,
           youtube: profileForm.youtube,
         },
-      })
-      .eq("id", user.id);
+      });
 
     if (error) {
       toast.error("Erro ao salvar perfil");
     } else {
       setSaved(true);
       toast.success("Perfil salvo!");
+      await refreshProfile();
       setTimeout(() => setSaved(false), 2000);
     }
   };
