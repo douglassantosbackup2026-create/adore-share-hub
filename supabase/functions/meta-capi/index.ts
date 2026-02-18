@@ -6,7 +6,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const PIXEL_ID = "4384406811885630";
+const PIXEL_ID = "1688353905856977";
 const API_VERSION = "v18.0";
 
 function hashEmail(email: string): string {
