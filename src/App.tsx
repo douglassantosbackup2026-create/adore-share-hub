@@ -17,6 +17,7 @@ import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import FanProfile from "./pages/FanProfile";
+import Onboarding from "./pages/Onboarding";
 
 const queryClient = new QueryClient();
 
@@ -38,6 +39,7 @@ const App = () => (
             <Route path="/dashboard" element={<CreatorRoute><Dashboard /></CreatorRoute>} />
             <Route path="/settings" element={<CreatorRoute><Settings /></CreatorRoute>} />
             <Route path="/profile/:id" element={<FanProfile />} />
+            <Route path="/onboarding" element={<CreatorRoute><Onboarding /></CreatorRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

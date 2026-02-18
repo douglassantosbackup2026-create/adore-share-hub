@@ -4,6 +4,7 @@ import heroBg from "@/assets/hero-bg.jpg";
 import CreatorCard from "@/components/CreatorCard";
 import mockCreators from "@/data/creators";
 import Navbar from "@/components/Navbar";
+import { useCreators } from "@/hooks/useCreators";
 
 const stats = [
   { value: "2M+", label: "Criadores ativos" },
@@ -46,7 +47,10 @@ const features = [
 ];
 
 const Index = () => {
-  const featured = mockCreators.slice(0, 4);
+  const { data: realCreators } = useCreators();
+  const featured = realCreators?.length
+    ? [...realCreators].sort((a, b) => b.subscribers - a.subscribers).slice(0, 4)
+    : mockCreators.slice(0, 4);
 
   return (
     <div className="min-h-screen bg-background">
