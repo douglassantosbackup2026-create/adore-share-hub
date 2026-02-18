@@ -6,6 +6,7 @@ import { mockCreators } from "@/data/creators";
 import { usePosts } from "@/hooks/usePosts";
 import { useCreators } from "@/hooks/useCreators";
 import { useAuth } from "@/contexts/AuthContext";
+import { useMySubscriptions } from "@/hooks/useMySubscriptions";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -60,6 +61,7 @@ const Feed = () => {
   const { posts: realPosts, likePost } = usePosts();
   const { data: realCreators } = useCreators();
   const { user, profile } = useAuth();
+  const mySubscriptions = useMySubscriptions();
   const [localLikes, setLocalLikes] = useState<Set<string>>(new Set());
   const [mockState, setMockState] = useState(mockPosts);
 
@@ -83,7 +85,7 @@ const Feed = () => {
         time: formatDistanceToNow(new Date(p.created_at), { addSuffix: true, locale: ptBR }),
         text: p.text,
         image: p.media_url,
-        locked: p.min_plan !== "free",
+        locked: p.min_plan !== "free" && !mySubscriptions.has(p.creator_id),
         likes: p.likes_count,
         comments: 0,
         liked: localLikes.has(p.id),
