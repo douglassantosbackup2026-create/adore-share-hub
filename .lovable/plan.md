@@ -1,78 +1,44 @@
 
-# Corrigir Build + Integrar Meta Conversions API
+# Adicionar Evento Purchase na Meta Conversions API
 
-## Dois problemas a resolver
+## Situação atual
 
-### Problema 1: Erro de Build (noscript no head)
+O fluxo de assinatura em `CreatorProfile.tsx` já possui dois eventos rastreados:
+- `ViewContent` — ao carregar o perfil do criador
+- `InitiateCheckout` — ao clicar no botão "Assinar" (antes da tentativa)
 
-O HTML5 não permite tags `<img>` dentro de `<noscript>` no `<head>`. A correção é mover o bloco `<noscript>` para o `<body>`, logo após a abertura da tag:
+Falta apenas o `Purchase`, que deve ser disparado **somente após a assinatura ser confirmada com sucesso** no banco de dados.
 
-```html
-<body>
-  <noscript>
-    <img height="1" width="1" style="display:none"
-      src="https://www.facebook.com/tr?id=4384406811885630&ev=PageView&noscript=1"
-    />
-  </noscript>
-  <div id="root"></div>
-  ...
-</body>
+## O que será alterado
+
+### Arquivo: `src/pages/CreatorProfile.tsx`
+
+Dentro da função `handleSubscribe`, após `await subscribe.mutateAsync(...)` retornar com sucesso e antes de chamar `toast.success(...)`, adicionar a chamada:
+
+```ts
+sendMetaEvent({
+  event_name: "Purchase",
+  user_email: user.email,
+  value: plans[selectedPlan].price,
+  currency: "BRL",
+});
 ```
 
-### Problema 2: Token da Meta Ads API
-
-O token fornecido é uma credencial de acesso à **Meta Conversions API (CAPI)** — a versão server-side do rastreamento. Isso permite enviar eventos (cadastro, assinatura, compra) diretamente do servidor para o Meta, complementando o pixel do navegador.
-
-**O token NUNCA deve ficar no código-fonte.** Será armazenado com segurança como um secret do backend e usado apenas dentro de uma função de backend.
-
----
-
-## O que será implementado
-
-### Etapa 1: Corrigir `index.html`
-- Mover `<noscript>` do `<head>` para o `<body>` — resolve o erro de build.
-
-### Etapa 2: Armazenar o token com segurança
-- Guardar o token (`EAAXIx...`) como secret `META_CAPI_TOKEN` no backend seguro — ele nunca ficará visível no código.
-
-### Etapa 3: Criar Edge Function `meta-capi`
-Uma função de backend que recebe eventos da aplicação e os encaminha para a Meta Conversions API:
+Sequência final do fluxo:
 
 ```
-POST /meta-capi
-{
-  "event_name": "Lead",        // ou Purchase, CompleteRegistration, etc.
-  "user_email": "...",         // para matching de usuário (hasheado automaticamente)
-  "value": 29.90               // opcional, para eventos de compra
-}
+Clique em "Assinar"
+    → [Meta] InitiateCheckout (com valor do plano)
+    → subscribe.mutateAsync() — grava no banco
+        → sucesso → [Meta] Purchase (com valor do plano) ← NOVO
+                  → toast.success("Assinatura realizada com sucesso!")
+        → erro    → toast.error(...)
 ```
 
-A função usa o `META_CAPI_TOKEN` e o Pixel ID `4384406811885630` para enviar para:
-`https://graph.facebook.com/v18.0/4384406811885630/events`
+Nenhum outro arquivo precisa ser alterado — a edge function `meta-capi` e o helper `sendMetaEvent` já suportam o evento `Purchase` com os parâmetros `value` e `currency`.
 
-### Etapa 4: Disparar eventos nas ações relevantes
-Adicionar chamadas à edge function nos momentos-chave:
+## Resumo
 
-| Ação do usuário | Evento Meta |
+| Arquivo | Alteração |
 |---|---|
-| Cadastro concluído | `CompleteRegistration` |
-| Clicar em assinar | `InitiateCheckout` |
-| Visitar perfil de criador | `ViewContent` |
-
----
-
-## Resumo de arquivos
-
-| Arquivo | Ação |
-|---|---|
-| `index.html` | Mover `<noscript>` para o `<body>` |
-| Backend secret | Adicionar `META_CAPI_TOKEN` |
-| `supabase/functions/meta-capi/index.ts` | Criar edge function |
-| `src/pages/Signup.tsx` | Disparar `CompleteRegistration` |
-| `src/pages/CreatorProfile.tsx` | Disparar `ViewContent` |
-
----
-
-## Segurança
-
-O token nunca ficará exposto ao navegador. Toda comunicação com a Meta Conversions API ocorre servidor → servidor, dentro da edge function protegida.
+| `src/pages/CreatorProfile.tsx` | Adicionar `sendMetaEvent({ event_name: "Purchase", ... })` no `onSuccess` do subscribe |
