@@ -173,6 +173,7 @@ export type Database = {
           fan_id: string
           id: string
           plan: string
+          syncpay_id: string | null
         }
         Insert: {
           active?: boolean
@@ -181,6 +182,7 @@ export type Database = {
           fan_id: string
           id?: string
           plan: string
+          syncpay_id?: string | null
         }
         Update: {
           active?: boolean
@@ -189,6 +191,7 @@ export type Database = {
           fan_id?: string
           id?: string
           plan?: string
+          syncpay_id?: string | null
         }
         Relationships: [
           {
