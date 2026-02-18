@@ -1,14 +1,19 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Heart, MessageCircle, Share2, Lock, MoreHorizontal, Bookmark } from "lucide-react";
+import { Heart, MessageCircle, Share2, Lock, MoreHorizontal, Bookmark, Send, Loader2 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { mockCreators } from "@/data/creators";
 import { usePosts } from "@/hooks/usePosts";
 import { useCreators } from "@/hooks/useCreators";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMySubscriptions } from "@/hooks/useMySubscriptions";
+import { useComments } from "@/hooks/useComments";
+import { PixPaymentModal } from "@/components/PixPaymentModal";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 const mockPosts = [
   {
@@ -57,6 +62,113 @@ const mockPosts = [
   },
 ];
 
+interface PixModalState {
+  creatorId: string;
+  creatorName: string;
+  planName: string;
+  amount: number;
+}
+
+// Fetches cheapest plan for each creator in the feed
+function useCreatorPlansMap(creatorIds: string[]) {
+  return useQuery({
+    queryKey: ["creatorPlansMap", creatorIds.join(",")],
+    queryFn: async () => {
+      if (!creatorIds.length) return {} as Record<string, { plan_name: string; price: number }>;
+      const { data, error } = await supabase
+        .from("creator_plans")
+        .select("creator_id, plan_name, price")
+        .in("creator_id", creatorIds)
+        .order("price", { ascending: true });
+      if (error) throw error;
+      // Keep only the cheapest plan per creator
+      const map: Record<string, { plan_name: string; price: number }> = {};
+      for (const row of data ?? []) {
+        if (!map[row.creator_id]) {
+          map[row.creator_id] = { plan_name: row.plan_name, price: Number(row.price) };
+        }
+      }
+      return map;
+    },
+    enabled: creatorIds.length > 0,
+  });
+}
+
+// Comment section for a single post
+function CommentSection({ postId }: { postId: string }) {
+  const { user, profile } = useAuth();
+  const { comments, isLoading, addComment } = useComments(postId);
+  const [text, setText] = useState("");
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+    if (!user) {
+      toast.error("Faça login para comentar");
+      return;
+    }
+    addComment.mutate(
+      { text: text.trim(), authorId: user.id },
+      { onSuccess: () => setText("") }
+    );
+  };
+
+  return (
+    <div className="border-t border-border/40 px-4 py-3 flex flex-col gap-3">
+      {isLoading ? (
+        <div className="flex justify-center py-2">
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        </div>
+      ) : comments.length === 0 ? (
+        <p className="text-xs text-muted-foreground text-center py-1">Seja o primeiro a comentar</p>
+      ) : (
+        <div className="flex flex-col gap-2 max-h-48 overflow-y-auto">
+          {comments.map((c) => (
+            <div key={c.id} className="flex items-start gap-2">
+              <img
+                src={c.author.avatar_url ?? "/placeholder.svg"}
+                alt={c.author.name}
+                className="h-7 w-7 rounded-full object-cover flex-shrink-0 ring-1 ring-border/40"
+              />
+              <div className="bg-muted/50 rounded-xl px-3 py-1.5 min-w-0">
+                <span className="text-xs font-semibold text-foreground mr-1.5">{c.author.name}</span>
+                <span className="text-xs text-foreground/80">{c.text}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {user && (
+        <form onSubmit={handleSubmit} className="flex items-center gap-2">
+          <img
+            src={profile?.avatar_url ?? "/placeholder.svg"}
+            alt=""
+            className="h-7 w-7 rounded-full object-cover flex-shrink-0"
+          />
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Adicionar comentário..."
+            className="flex-1 bg-muted/50 border border-border/40 rounded-full px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+          />
+          <button
+            type="submit"
+            disabled={!text.trim() || addComment.isPending}
+            className="text-primary disabled:text-muted-foreground transition-colors"
+          >
+            {addComment.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
 const Feed = () => {
   const { posts: realPosts, likePost } = usePosts();
   const { data: realCreators } = useCreators();
@@ -64,6 +176,8 @@ const Feed = () => {
   const mySubscriptions = useMySubscriptions();
   const [localLikes, setLocalLikes] = useState<Set<string>>(new Set());
   const [mockState, setMockState] = useState(mockPosts);
+  const [openComments, setOpenComments] = useState<Set<string>>(new Set());
+  const [pixModal, setPixModal] = useState<PixModalState | null>(null);
 
   // Use real creators for stories/suggestions, fallback to mock
   const stories = realCreators?.length ? realCreators.slice(0, 6) : mockCreators.slice(0, 6);
@@ -71,6 +185,10 @@ const Feed = () => {
 
   // Use real posts or fallback to mock
   const useReal = realPosts.length > 0;
+
+  // Fetch cheapest plans for all creators in the feed
+  const creatorIds = useReal ? [...new Set(realPosts.map((p) => p.creator_id))] : [];
+  const { data: plansMap = {} } = useCreatorPlansMap(creatorIds);
 
   const feedPosts = useReal
     ? realPosts.map((p) => ({
@@ -108,6 +226,28 @@ const Feed = () => {
         )
       );
     }
+  };
+
+  const toggleComments = (id: string) => {
+    setOpenComments((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const handleSubscribeFromPost = (post: typeof feedPosts[number]) => {
+    if (!user) {
+      toast.error("Faça login para assinar");
+      return;
+    }
+    const plan = plansMap[post.creator.id];
+    setPixModal({
+      creatorId: String(post.creator.id),
+      creatorName: post.creator.name,
+      planName: plan?.plan_name ?? "Plano Básico",
+      amount: plan?.price ?? 9.9,
+    });
   };
 
   const displayPosts = useReal ? feedPosts : mockState;
@@ -171,12 +311,12 @@ const Feed = () => {
                         <Lock className="h-6 w-6 text-primary-foreground" />
                       </div>
                       <p className="text-sm font-semibold text-foreground">Conteúdo exclusivo</p>
-                      <Link
-                        to={`/creator/${post.creator.id}`}
+                      <button
+                        onClick={() => handleSubscribeFromPost(post)}
                         className="rounded-full bg-gradient-primary px-5 py-2 text-sm font-semibold text-primary-foreground shadow-glow hover:scale-105 transition-transform"
                       >
                         Assinar para ver
-                      </Link>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -191,9 +331,12 @@ const Feed = () => {
                     <Heart className={`h-5 w-5 ${post.liked ? "fill-primary" : ""}`} />
                     <span>{post.likes.toLocaleString("pt-BR")}</span>
                   </button>
-                  <button className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                    <MessageCircle className="h-5 w-5" />
-                    <span>{post.comments}</span>
+                  <button
+                    onClick={() => toggleComments(post.id)}
+                    className={`flex items-center gap-1.5 text-sm transition-colors ${openComments.has(post.id) ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    <MessageCircle className={`h-5 w-5 ${openComments.has(post.id) ? "fill-primary/20" : ""}`} />
+                    <span>{useReal ? (openComments.has(post.id) ? "−" : "+") : String(post.comments)}</span>
                   </button>
                   <button className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
                     <Share2 className="h-5 w-5" />
@@ -203,6 +346,11 @@ const Feed = () => {
                   <Bookmark className="h-5 w-5" />
                 </button>
               </div>
+
+              {/* Comments section — only for real posts */}
+              {useReal && openComments.has(post.id) && (
+                <CommentSection postId={post.id} />
+              )}
             </div>
           ))}
         </div>
@@ -247,6 +395,21 @@ const Feed = () => {
           </div>
         </aside>
       </div>
+
+      {/* PIX Payment Modal — triggered from locked posts */}
+      {pixModal && user && (
+        <PixPaymentModal
+          open={!!pixModal}
+          onClose={() => setPixModal(null)}
+          onSuccess={() => setPixModal(null)}
+          creatorId={pixModal.creatorId}
+          creatorName={pixModal.creatorName}
+          planName={pixModal.planName}
+          amount={pixModal.amount}
+          fanId={user.id}
+          fanEmail={user.email ?? ""}
+        />
+      )}
     </div>
   );
 };
