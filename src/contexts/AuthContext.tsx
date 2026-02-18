@@ -40,8 +40,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       .from("profiles")
       .select("*")
       .eq("id", userId)
-      .single();
-    setProfile(data);
+      .maybeSingle();
+
+    if (!data) {
+      // Profile doesn't exist — create it using auth metadata
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const meta = user.user_metadata;
+        const { data: newProfile } = await supabase
+          .from("profiles")
+          .insert({
+            id: userId,
+            name: meta.name || "Usuário",
+            role: meta.role || "fan",
+            handle: meta.handle || null,
+            category: meta.category || null,
+          })
+          .select()
+          .single();
+        setProfile(newProfile);
+      }
+    } else {
+      setProfile(data);
+    }
   };
 
   useEffect(() => {
