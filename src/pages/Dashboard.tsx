@@ -15,7 +15,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
-
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 const revenueData = [
   { month: "Set", value: 3200 },
   { month: "Out", value: 4100 },
@@ -36,6 +37,7 @@ const Dashboard = () => {
   const { data: dashStats } = useDashboardStats();
   const [uploadHover, setUploadHover] = useState(false);
   const [postText, setPostText] = useState("");
+  const [minPlan, setMinPlan] = useState("free");
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -110,12 +112,13 @@ const Dashboard = () => {
         text: postText || null,
         media_url: urlData.publicUrl,
         media_type: mediaType,
-        min_plan: "free",
+        min_plan: minPlan,
       });
 
       if (postError) throw postError;
       toast.success("Conteúdo publicado com sucesso!");
       setPostText("");
+      setMinPlan("free");
     } catch (err: any) {
       toast.error(err.message || "Erro ao publicar");
     } finally {
@@ -227,12 +230,28 @@ const Dashboard = () => {
         {/* Upload new content */}
         <div className="glass-card rounded-2xl p-6">
           <h2 className="font-semibold text-foreground mb-4">Publicar novo conteúdo</h2>
-          <Textarea
-            placeholder="Escreva uma legenda para seu post..."
-            className="bg-muted/20 border-border/50 mb-4 resize-none"
-            value={postText}
-            onChange={(e) => setPostText(e.target.value)}
-          />
+          <div className="flex flex-col sm:flex-row gap-4 mb-4">
+            <Textarea
+              placeholder="Escreva uma legenda para seu post..."
+              className="bg-muted/20 border-border/50 resize-none flex-1"
+              value={postText}
+              onChange={(e) => setPostText(e.target.value)}
+            />
+            <div className="flex flex-col gap-2 sm:w-48">
+              <Label className="text-sm text-muted-foreground">Acesso mínimo</Label>
+              <Select value={minPlan} onValueChange={setMinPlan}>
+                <SelectTrigger className="bg-muted/20 border-border/50">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="free">🌐 Todos (gratuito)</SelectItem>
+                  <SelectItem value="fan">💖 Fã</SelectItem>
+                  <SelectItem value="superfan">🔥 Super Fã</SelectItem>
+                  <SelectItem value="vip">💎 VIP</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleUpload} />
           <div
             onClick={() => !uploading && fileRef.current?.click()}
