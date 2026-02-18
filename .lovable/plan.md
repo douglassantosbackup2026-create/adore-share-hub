@@ -1,44 +1,28 @@
 
-# Adicionar Evento Purchase na Meta Conversions API
+# Diagnóstico: Erro já foi corrigido
 
-## Situação atual
+## O que a imagem mostra
+O erro `Unable to parse HTML; parse5 error code disallowed-content-in-noscript-in-head` era causado pela tag `<img>` dentro de `<noscript>` no `<head>` do `index.html`.
 
-O fluxo de assinatura em `CreatorProfile.tsx` já possui dois eventos rastreados:
-- `ViewContent` — ao carregar o perfil do criador
-- `InitiateCheckout` — ao clicar no botão "Assinar" (antes da tentativa)
-
-Falta apenas o `Purchase`, que deve ser disparado **somente após a assinatura ser confirmada com sucesso** no banco de dados.
-
-## O que será alterado
-
-### Arquivo: `src/pages/CreatorProfile.tsx`
-
-Dentro da função `handleSubscribe`, após `await subscribe.mutateAsync(...)` retornar com sucesso e antes de chamar `toast.success(...)`, adicionar a chamada:
-
-```ts
-sendMetaEvent({
-  event_name: "Purchase",
-  user_email: user.email,
-  value: plans[selectedPlan].price,
-  currency: "BRL",
-});
-```
-
-Sequência final do fluxo:
+## Estado atual do arquivo
+O arquivo `index.html` já está **correto**:
 
 ```
-Clique em "Assinar"
-    → [Meta] InitiateCheckout (com valor do plano)
-    → subscribe.mutateAsync() — grava no banco
-        → sucesso → [Meta] Purchase (com valor do plano) ← NOVO
-                  → toast.success("Assinatura realizada com sucesso!")
-        → erro    → toast.error(...)
+<head>
+  ...scripts e meta tags...
+</head>      ← fecha na linha 39, sem noscript
+
+<body>
+  <noscript>   ← está aqui, no body (correto)
+    <img .../>
+  </noscript>
+  <div id="root"></div>
+</body>
 ```
 
-Nenhum outro arquivo precisa ser alterado — a edge function `meta-capi` e o helper `sendMetaEvent` já suportam o evento `Purchase` com os parâmetros `value` e `currency`.
+A correção já foi aplicada em uma sessão anterior. A imagem enviada mostra o estado antigo antes da correção.
 
-## Resumo
-
-| Arquivo | Alteração |
-|---|---|
-| `src/pages/CreatorProfile.tsx` | Adicionar `sendMetaEvent({ event_name: "Purchase", ... })` no `onSuccess` do subscribe |
+## Próximo passo sugerido
+Com o build funcionando, o próximo passo é verificar os eventos Meta de ponta a ponta:
+1. A edge function `meta-capi` precisa ser deployada
+2. Testar o fluxo de assinatura para confirmar que os eventos `ViewContent`, `InitiateCheckout` e `Purchase` chegam ao Meta Events Manager
