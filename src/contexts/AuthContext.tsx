@@ -14,6 +14,7 @@ interface Profile {
   category: string | null;
   social_links: unknown;
   created_at: string;
+  approved: boolean;
 }
 
 interface AuthContextType {

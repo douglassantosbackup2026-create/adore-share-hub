@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
-  LayoutDashboard, Users, Star, FileText, DollarSign, LogOut, Flame, Trash2, Eye, Shield,
+  LayoutDashboard, Users, Star, FileText, DollarSign, LogOut, Flame, Trash2, Eye, Shield, CheckCircle, Clock,
 } from "lucide-react";
 import {
   SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarMenu,
@@ -24,7 +24,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { usePlatformStats } from "@/hooks/usePlatformStats";
 import { useAdminUsers } from "@/hooks/useAdminUsers";
 import { useAdminPosts, useAdminDeletePost } from "@/hooks/useAdminPosts";
-import { useAdminCreators } from "@/hooks/useAdminCreators";
+import { useAdminCreators, useAdminPendingCreators, useApproveCreator } from "@/hooks/useAdminCreators";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -256,9 +256,12 @@ function UsersTab() {
 // ── Creators Tab ─────────────────────────────────────────────────────────────
 function CreatorsTab() {
   const { data: creators, isLoading } = useAdminCreators();
+  const { data: pending, isLoading: pendingLoading } = useAdminPendingCreators();
+  const approveMutation = useApproveCreator();
   const [sortBy, setSortBy] = useState<"revenue" | "subs">("revenue");
   const [plansCreator, setPlansCreator] = useState<string | null>(null);
   const [creatorPlans, setCreatorPlans] = useState<{ plan_name: string; price: number }[]>([]);
+  const { toast } = useToast();
 
   const sorted = [...(creators ?? [])].sort((a, b) =>
     sortBy === "revenue"
@@ -275,8 +278,77 @@ function CreatorsTab() {
     setPlansCreator(creatorId);
   };
 
+  const handleApprove = async (creatorId: string, name: string) => {
+    try {
+      await approveMutation.mutateAsync(creatorId);
+      toast({ title: `${name} aprovado com sucesso!` });
+    } catch (e: any) {
+      toast({ title: "Erro ao aprovar", description: e.message, variant: "destructive" });
+    }
+  };
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* Pending creators section */}
+      {(pendingLoading || (pending && pending.length > 0)) && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Clock className="h-5 w-5 text-primary" />
+            <h2 className="text-xl font-bold">Criadores Pendentes</h2>
+            {!pendingLoading && pending && (
+              <Badge variant="secondary">{pending.length}</Badge>
+            )}
+          </div>
+          <Card className="border-border bg-muted/30">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Handle</TableHead>
+                  <TableHead>Categoria</TableHead>
+                  <TableHead>Cadastro</TableHead>
+                  <TableHead className="text-right">Ação</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingLoading
+                  ? Array.from({ length: 3 }).map((_, i) => (
+                      <TableRow key={i}>
+                        {Array.from({ length: 5 }).map((_, j) => (
+                          <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  : (pending ?? []).map((c) => (
+                      <TableRow key={c.id}>
+                        <TableCell className="font-medium">{c.name}</TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {c.handle ? `@${c.handle}` : "—"}
+                        </TableCell>
+                        <TableCell>{c.category ?? "—"}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {new Date(c.created_at).toLocaleDateString("pt-BR")}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            onClick={() => handleApprove(c.id, c.name)}
+                            disabled={approveMutation.isPending}
+                            className="gap-2"
+                          >
+                            <CheckCircle className="h-4 w-4" />
+                            Aprovar
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+              </TableBody>
+            </Table>
+          </Card>
+        </div>
+      )}
+
+      {/* Approved creators section */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-2xl font-bold">Gestão de Criadores</h2>
         <Select value={sortBy} onValueChange={(v) => setSortBy(v as "revenue" | "subs")}>

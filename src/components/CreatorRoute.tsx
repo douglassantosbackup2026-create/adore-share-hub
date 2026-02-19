@@ -20,6 +20,10 @@ const CreatorRoute = ({ children }: { children: React.ReactNode }) => {
     return <Navigate to="/feed" replace />;
   }
 
+  if (profile && profile.role === "creator" && profile.approved === false) {
+    return <Navigate to="/pending-approval" replace />;
+  }
+
   return <>{children}</>;
 };
 
