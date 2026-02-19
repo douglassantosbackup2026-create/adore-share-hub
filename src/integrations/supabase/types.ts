@@ -203,6 +203,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          approved: boolean
           avatar_url: string | null
           bio: string | null
           category: string | null
@@ -215,6 +216,7 @@ export type Database = {
           social_links: Json | null
         }
         Insert: {
+          approved?: boolean
           avatar_url?: string | null
           bio?: string | null
           category?: string | null
@@ -227,6 +229,7 @@ export type Database = {
           social_links?: Json | null
         }
         Update: {
+          approved?: boolean
           avatar_url?: string | null
           bio?: string | null
           category?: string | null
