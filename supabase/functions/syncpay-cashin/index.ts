@@ -93,8 +93,8 @@ Deno.serve(async (req) => {
       webhook_url: webhookUrl,
       client: {
         name: fan_name,
+        cpf: cpfClean,
         email: fanEmail,
-        document: cpfClean,
       },
       metadata: {
         fan_id: fanId,
