@@ -121,6 +121,36 @@ export type Database = {
           },
         ]
       }
+      pending_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          creator_id: string
+          fan_id: string
+          id: string
+          plan: string
+          syncpay_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          creator_id: string
+          fan_id: string
+          id?: string
+          plan: string
+          syncpay_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          creator_id?: string
+          fan_id?: string
+          id?: string
+          plan?: string
+          syncpay_id?: string
+        }
+        Relationships: []
+      }
       post_comments: {
         Row: {
           author_id: string
