@@ -1,111 +1,58 @@
 
-# Corrigir loop silencioso no login quando perfil não existe
+# Remover usuário anajulia_858d
 
-## Diagnóstico
+## Identificação do usuário
 
-O login está **funcionando corretamente** (o backend retorna status 200). O problema é uma condição de guarda silenciosa no `Login.tsx`:
+| Campo | Valor |
+|---|---|
+| Nome | Ana Julia |
+| Handle | anajulia_858d |
+| ID | 858d1fb6-2743-473b-98c0-18340a13896b |
+| Role | creator |
+| Posts | 0 |
+| Seguidores | 0 |
+| Assinaturas | 0 |
+| Mensagens | 0 |
 
-```ts
-// Só redireciona se AMBOS user E profile existem
-if (user && profile) {
-  navigate(...)
-}
-```
+O perfil não possui nenhum dado associado, tornando a remoção segura e sem risco de perda de conteúdo.
 
-O usuário `testefla@teste.com` (ID: `2380bd06-63a3-4650-82d7-76b8f4a9dbb9`) **não tem registro na tabela `profiles`**, então `profile` permanece `null` e o redirecionamento nunca ocorre — mesmo com login bem-sucedido.
-
-Isso pode acontecer com qualquer usuário criado diretamente pelo sistema de auth sem trigger de criação de perfil, ou cujo perfil foi deletado.
-
----
-
-## Duas correções necessárias
-
-### Correção 1 — `Login.tsx`: Redirecionar com base em `user`, não em `user + profile`
-
-O redirecionamento pós-login não deve depender de `profile` existir. Em vez disso:
-- Se `user` existe mas `profile` é `null` → redirecionar para `/onboarding` (usuário precisa completar cadastro)
-- Se `user` e `profile` existem → redirecionar normalmente para `/dashboard` ou `/feed`
-
-```ts
-// ANTES (bugado):
-if (user && profile) { navigate(...) }
-
-// DEPOIS (correto):
-if (user) {
-  if (profile) {
-    navigate(profile.role === "creator" ? "/dashboard" : "/feed", { replace: true });
-  } else {
-    navigate("/onboarding", { replace: true });
-  }
-}
-```
-
-Também é necessário adicionar o `loading` do auth para evitar redirecionamento prematuro durante a hidratação:
-```ts
-if (!loading && user) { ... }
-```
-
-### Correção 2 — `AuthContext.tsx`: Criar perfil automaticamente se não existir
-
-Quando o `fetchProfile` retorna `null`, criar um perfil básico com os dados do `user.user_metadata` (que já contém `name`, `role`, `handle`, etc., definidos no momento do signup):
-
-```ts
-const fetchProfile = async (userId: string) => {
-  const { data } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", userId)
-    .single();
-  
-  if (!data) {
-    // Perfil não existe — criar com metadados do auth
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const meta = user.user_metadata;
-      const { data: newProfile } = await supabase
-        .from("profiles")
-        .insert({
-          id: userId,
-          name: meta.name || "Usuário",
-          role: meta.role || "fan",
-          handle: meta.handle || null,
-          category: meta.category || null,
-        })
-        .select()
-        .single();
-      setProfile(newProfile);
-    }
-  } else {
-    setProfile(data);
-  }
-};
-```
+Existe um segundo usuário chamado "Ana Julia" (handle: `anajulia_8a86`) que NÃO será afetado.
 
 ---
 
-## Arquivos alterados
+## O que será removido
 
-### 1. `src/contexts/AuthContext.tsx`
-- `fetchProfile`: verificar se `data` é `null` após a query e, se for, inserir um novo perfil com `user_metadata`
+1. Registro na tabela `profiles` (ID: `858d1fb6-2743-473b-98c0-18340a13896b`)
+2. Registro na tabela `user_roles` (role padrão `user` criada no signup)
 
-### 2. `src/pages/Login.tsx`
-- Trocar `if (user && profile)` por `if (!loading && user)`
-- Dentro: checar `profile` para decidir rota — se `null`, redirecionar para `/onboarding`
+A conta de autenticação (login/senha) só pode ser removida via função de banco de dados com privilégios elevados (`admin_ban_user`), que já está disponível no projeto e exclui o perfil do usuário.
+
+---
+
+## Abordagem técnica
+
+Usar a função RPC `admin_ban_user` que já existe no banco de dados:
+
+```sql
+SELECT admin_ban_user('858d1fb6-2743-473b-98c0-18340a13896b');
+```
+
+Esta função:
+- Verifica que quem chama tem role `admin`
+- Deleta o registro de `profiles` correspondente
+
+Após isso, também remover o registro de `user_roles`:
+```sql
+DELETE FROM user_roles WHERE user_id = '858d1fb6-2743-473b-98c0-18340a13896b';
+```
 
 ---
 
 ## Sequência de execução
 
 ```text
-1. Atualizar src/contexts/AuthContext.tsx (auto-criar perfil se não existir)
-2. Atualizar src/pages/Login.tsx (corrigir lógica de redirecionamento)
+1. Executar admin_ban_user via SQL para deletar o profile
+2. Deletar registro de user_roles
 ```
 
-## Resultado esperado
-
-| Situação | Comportamento |
-|---|---|
-| Login com perfil existente (creator) | Redireciona para `/dashboard` |
-| Login com perfil existente (fan) | Redireciona para `/feed` |
-| Login sem perfil (qualquer role) | Cria perfil automaticamente e redireciona para `/onboarding` |
-| Login com erro | Exibe toast de erro, permanece na tela |
+Isso removerá completamente o usuário `anajulia_858d` do sistema sem afetar nenhum outro usuário.
