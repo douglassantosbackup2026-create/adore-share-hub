@@ -1,6 +1,6 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { Heart, Star, Lock, MessageCircle, Share2, ChevronLeft, Check, Zap, Users, UserPlus, UserCheck } from "lucide-react";
+import { Heart, Star, Lock, MessageCircle, Share2, ChevronLeft, Check, Zap, Users, UserPlus, UserCheck, Settings, Pencil, Trash2, FileText } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { useCreatorProfile } from "@/hooks/useCreatorProfile";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -9,6 +9,13 @@ import { useFollow } from "@/hooks/useFollow";
 import { toast } from "sonner";
 import { sendMetaEvent } from "@/lib/metaCapi";
 import { PixPaymentModal } from "@/components/PixPaymentModal";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 
 
 const defaultPlans = [
@@ -53,6 +60,69 @@ const CreatorProfile = () => {
   const [liked, setLiked] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(0);
   const [pixModalOpen, setPixModalOpen] = useState(false);
+
+  // Owner management state
+  const queryClient = useQueryClient();
+  const isOwner = !!user && !!id && user.id === id;
+
+  interface MyPost { id: string; text: string | null; media_url: string | null; media_type: string | null; min_plan: string; created_at: string; }
+  const [editPost, setEditPost] = useState<MyPost | null>(null);
+  const [editText, setEditText] = useState("");
+  const [editPlan, setEditPlan] = useState("free");
+  const [deletePost, setDeletePost] = useState<MyPost | null>(null);
+
+  const { data: myPosts = [] } = useQuery<MyPost[]>({
+    queryKey: ["ownerPosts", id],
+    enabled: isOwner,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("posts")
+        .select("id, text, media_url, media_type, min_plan, created_at")
+        .eq("creator_id", id!)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data as MyPost[];
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ postId, text, minPlan }: { postId: string; text: string; minPlan: string }) => {
+      const { error } = await supabase.from("posts").update({ text, min_plan: minPlan }).eq("id", postId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ownerPosts", id] });
+      toast.success("Post atualizado!");
+      setEditPost(null);
+    },
+    onError: () => toast.error("Erro ao atualizar post"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (postId: string) => {
+      const { error } = await supabase.from("posts").delete().eq("id", postId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ownerPosts", id] });
+      toast.success("Post excluído!");
+      setDeletePost(null);
+    },
+    onError: () => toast.error("Erro ao excluir post"),
+  });
+
+  const PLAN_LABELS: Record<string, { label: string; emoji: string }> = {
+    free: { label: "Todos", emoji: "🌐" },
+    fan: { label: "Fã", emoji: "💖" },
+    superfan: { label: "Super Fã", emoji: "🔥" },
+    vip: { label: "VIP", emoji: "💎" },
+  };
+
+  const openEdit = (post: MyPost) => {
+    setEditPost(post);
+    setEditText(post.text ?? "");
+    setEditPlan(post.min_plan);
+  };
 
   // Fire ViewContent when profile is loaded
   useEffect(() => {
@@ -232,6 +302,15 @@ const CreatorProfile = () => {
             <button className="flex h-11 w-11 items-center justify-center rounded-xl border border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-border transition-all duration-200">
               <MessageCircle className="h-5 w-5" />
             </button>
+            {isOwner && (
+              <button
+                onClick={() => navigate("/settings")}
+                className="flex items-center gap-2 h-11 px-4 rounded-xl border border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-border transition-all duration-200 text-sm font-medium"
+              >
+                <Settings className="h-4 w-4" />
+                Gerenciar perfil
+              </button>
+            )}
           </div>
         </div>
 
@@ -400,6 +479,67 @@ const CreatorProfile = () => {
             </p>
           </div>
         </div>
+
+        {/* Owner — Meus Posts management section */}
+        {isOwner && (
+          <div className="mt-12">
+            <div className="flex items-center gap-3 mb-6">
+              <FileText className="h-5 w-5 text-primary" />
+              <h2 className="font-display text-xl font-bold text-foreground">Meus Posts</h2>
+              <span className="text-sm text-muted-foreground">({myPosts.length})</span>
+            </div>
+
+            {myPosts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed border-border/50 rounded-2xl">
+                <FileText className="h-10 w-10 text-muted-foreground/40 mb-3" />
+                <p className="text-sm text-muted-foreground">Nenhum post publicado ainda.</p>
+                <p className="text-xs text-muted-foreground/60 mt-1">Publique conteúdo pelo dashboard.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-2">
+                {myPosts.map((post) => {
+                  const planInfo = PLAN_LABELS[post.min_plan] ?? PLAN_LABELS.free;
+                  return (
+                    <div key={post.id} className="group relative aspect-square rounded-xl overflow-hidden bg-muted border border-border/40">
+                      {post.media_url ? (
+                        <img
+                          src={post.media_url}
+                          alt=""
+                          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
+                        />
+                      ) : (
+                        <div className="h-full w-full bg-gradient-to-br from-muted to-secondary flex items-center justify-center p-3">
+                          <p className="text-xs text-muted-foreground text-center line-clamp-4">{post.text || "Post sem mídia"}</p>
+                        </div>
+                      )}
+
+                      {/* Plan badge */}
+                      <div className="absolute top-2 left-2 rounded-full bg-background/80 backdrop-blur-sm px-2 py-0.5 text-[10px] font-semibold text-foreground">
+                        {planInfo.emoji} {planInfo.label}
+                      </div>
+
+                      {/* Hover overlay */}
+                      <div className="absolute inset-0 bg-background/70 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                        <button
+                          onClick={() => openEdit(post)}
+                          className="flex items-center gap-1.5 rounded-xl bg-card border border-border px-3 py-2 text-xs font-semibold text-foreground hover:border-primary/60 hover:text-primary transition-colors"
+                        >
+                          <Pencil className="h-3.5 w-3.5" /> Editar
+                        </button>
+                        <button
+                          onClick={() => setDeletePost(post)}
+                          className="flex items-center gap-1.5 rounded-xl bg-card border border-border px-3 py-2 text-xs font-semibold text-foreground hover:border-destructive/60 hover:text-destructive transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> Excluir
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="h-24" />
@@ -408,9 +548,7 @@ const CreatorProfile = () => {
         <PixPaymentModal
           open={pixModalOpen}
           onClose={() => setPixModalOpen(false)}
-          onSuccess={() => {
-            // Subscription query will update via polling in modal
-          }}
+          onSuccess={() => {}}
           creatorId={id!}
           creatorName={creator.name}
           planName={plans[selectedPlan].name}
@@ -419,6 +557,71 @@ const CreatorProfile = () => {
           fanEmail={user.email ?? ""}
         />
       )}
+
+      {/* Edit post modal */}
+      <Dialog open={!!editPost} onOpenChange={(open) => !open && setEditPost(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar post</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium text-foreground">Legenda</label>
+              <Textarea
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                placeholder="Escreva a legenda..."
+                className="resize-none min-h-[100px]"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium text-foreground">Nível de acesso</label>
+              <Select value={editPlan} onValueChange={setEditPlan}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="free">🌐 Todos (gratuito)</SelectItem>
+                  <SelectItem value="fan">💖 Fã</SelectItem>
+                  <SelectItem value="superfan">🔥 Super Fã</SelectItem>
+                  <SelectItem value="vip">💎 VIP</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditPost(null)}>Cancelar</Button>
+            <Button
+              onClick={() => editPost && updateMutation.mutate({ postId: editPost.id, text: editText, minPlan: editPlan })}
+              disabled={updateMutation.isPending}
+              className="bg-gradient-primary text-primary-foreground shadow-glow"
+            >
+              {updateMutation.isPending ? "Salvando..." : "Salvar alterações"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deletePost} onOpenChange={(open) => !open && setDeletePost(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir post?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. O post será removido permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deletePost && deleteMutation.mutate(deletePost.id)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteMutation.isPending ? "Excluindo..." : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
