@@ -1,11 +1,28 @@
+import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Users, Heart, ChevronLeft, UserCircle2 } from "lucide-react";
+import {
+  Users, Heart, ChevronLeft, UserCircle2,
+  Pencil, Trash2, Video, MessageSquare, Globe, Flame, Diamond,
+} from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/hooks/use-toast";
 
 interface FanProfileData {
   id: string;
@@ -14,6 +31,7 @@ interface FanProfileData {
   avatar_url: string | null;
   cover_url: string | null;
   created_at: string;
+  role: string;
 }
 
 interface FollowedCreator {
@@ -36,18 +54,45 @@ interface SubscribedCreator {
   } | null;
 }
 
+interface Post {
+  id: string;
+  text: string | null;
+  media_url: string | null;
+  media_type: string | null;
+  min_plan: string;
+  created_at: string;
+  likes_count: number;
+}
+
+const PLAN_LABELS: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
+  free: { label: "Todos", icon: <Globe className="h-3 w-3" />, className: "bg-muted text-muted-foreground" },
+  fan: { label: "Fã", icon: <Heart className="h-3 w-3" />, className: "bg-primary/10 text-primary border border-primary/20" },
+  superfan: { label: "Super Fã", icon: <Flame className="h-3 w-3" />, className: "bg-orange-500/10 text-orange-500 border border-orange-500/20" },
+  vip: { label: "VIP", icon: <Diamond className="h-3 w-3" />, className: "bg-yellow-500/10 text-yellow-500 border border-yellow-500/20" },
+};
+
 const FanProfile = () => {
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
+  const { user, profile: authProfile } = useAuth();
   const isOwn = user?.id === id;
+  const queryClient = useQueryClient();
 
+  // Edit modal state
+  const [editPost, setEditPost] = useState<Post | null>(null);
+  const [editText, setEditText] = useState("");
+  const [editPlan, setEditPlan] = useState("free");
+
+  // Delete modal state
+  const [deletePostId, setDeletePostId] = useState<string | null>(null);
+
+  // ── Profile ──────────────────────────────────────────────────────────
   const { data: fan, isLoading: loadingFan } = useQuery({
     queryKey: ["fanProfile", id],
     queryFn: async (): Promise<FanProfileData | null> => {
       if (!id) return null;
       const { data } = await supabase
         .from("profiles")
-        .select("id, name, handle, avatar_url, cover_url, created_at")
+        .select("id, name, handle, avatar_url, cover_url, created_at, role")
         .eq("id", id)
         .single();
       return data;
@@ -55,6 +100,7 @@ const FanProfile = () => {
     enabled: !!id,
   });
 
+  // ── Follows ───────────────────────────────────────────────────────────
   const { data: followed = [] } = useQuery({
     queryKey: ["fanFollows", id],
     queryFn: async (): Promise<FollowedCreator[]> => {
@@ -68,6 +114,7 @@ const FanProfile = () => {
     enabled: !!id,
   });
 
+  // ── Subscriptions ─────────────────────────────────────────────────────
   const { data: subscribed = [] } = useQuery({
     queryKey: ["fanSubscriptions", id],
     queryFn: async (): Promise<SubscribedCreator[]> => {
@@ -82,6 +129,66 @@ const FanProfile = () => {
     enabled: !!id,
   });
 
+  // ── My Posts (only when isOwn + creator) ─────────────────────────────
+  const isCreatorOwner = isOwn && (authProfile?.role === "creator" || fan?.role === "creator");
+
+  const { data: myPosts = [], isLoading: loadingPosts } = useQuery({
+    queryKey: ["myPosts", id],
+    queryFn: async (): Promise<Post[]> => {
+      if (!id) return [];
+      const { data, error } = await supabase
+        .from("posts")
+        .select("id, text, media_url, media_type, min_plan, created_at, likes_count")
+        .eq("creator_id", id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: isCreatorOwner,
+  });
+
+  // ── Edit mutation ─────────────────────────────────────────────────────
+  const updateMutation = useMutation({
+    mutationFn: async ({ postId, text, min_plan }: { postId: string; text: string; min_plan: string }) => {
+      const { error } = await supabase
+        .from("posts")
+        .update({ text, min_plan })
+        .eq("id", postId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["myPosts", id] });
+      setEditPost(null);
+      toast({ title: "Post atualizado com sucesso!" });
+    },
+    onError: () => {
+      toast({ title: "Erro ao atualizar o post", variant: "destructive" });
+    },
+  });
+
+  // ── Delete mutation ───────────────────────────────────────────────────
+  const deleteMutation = useMutation({
+    mutationFn: async (postId: string) => {
+      const { error } = await supabase.from("posts").delete().eq("id", postId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["myPosts", id] });
+      setDeletePostId(null);
+      toast({ title: "Post excluído com sucesso!" });
+    },
+    onError: () => {
+      toast({ title: "Erro ao excluir o post", variant: "destructive" });
+    },
+  });
+
+  const openEdit = (post: Post) => {
+    setEditPost(post);
+    setEditText(post.text ?? "");
+    setEditPlan(post.min_plan);
+  };
+
+  // ── Loading ───────────────────────────────────────────────────────────
   if (loadingFan) {
     return (
       <div className="min-h-screen bg-background">
@@ -174,7 +281,7 @@ const FanProfile = () => {
         </div>
 
         {/* Content grid */}
-        <div className="grid md:grid-cols-2 gap-6 pb-16">
+        <div className="grid md:grid-cols-2 gap-6 pb-8">
           {/* Followed creators */}
           <div className="glass-card rounded-2xl p-5">
             <h2 className="font-display font-bold text-foreground mb-4 flex items-center gap-2">
@@ -254,7 +361,159 @@ const FanProfile = () => {
             )}
           </div>
         </div>
+
+        {/* ── My Posts (creator only) ───────────────────────────────── */}
+        {isCreatorOwner && (
+          <div className="pb-16">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="font-display font-bold text-foreground text-lg flex items-center gap-2">
+                <MessageSquare className="h-5 w-5 text-primary" />
+                Meus Posts
+                <span className="ml-1 text-sm font-normal text-muted-foreground">({myPosts.length})</span>
+              </h2>
+            </div>
+
+            {loadingPosts ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+              </div>
+            ) : myPosts.length === 0 ? (
+              <div className="glass-card rounded-2xl p-10 text-center">
+                <p className="text-muted-foreground text-sm">Você ainda não publicou nenhum post.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                {myPosts.map((post) => {
+                  const plan = PLAN_LABELS[post.min_plan] ?? PLAN_LABELS.free;
+                  return (
+                    <div
+                      key={post.id}
+                      className="group relative aspect-square rounded-xl overflow-hidden bg-muted border border-border/40 cursor-pointer"
+                    >
+                      {/* Thumbnail */}
+                      {post.media_url && post.media_type === "image" ? (
+                        <img
+                          src={post.media_url}
+                          alt=""
+                          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                      ) : post.media_url && post.media_type === "video" ? (
+                        <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-muted to-muted/60">
+                          <Video className="h-10 w-10 text-muted-foreground/60" />
+                        </div>
+                      ) : (
+                        <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-muted to-muted/60 p-3">
+                          <p className="text-xs text-muted-foreground line-clamp-5 text-center leading-relaxed">
+                            {post.text}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Plan badge */}
+                      <div className={`absolute top-2 left-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${plan.className}`}>
+                        {plan.icon}
+                        {plan.label}
+                      </div>
+
+                      {/* Hover overlay */}
+                      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-3">
+                        <button
+                          onClick={() => openEdit(post)}
+                          className="flex flex-col items-center gap-1 text-foreground hover:text-primary transition-colors"
+                        >
+                          <div className="h-9 w-9 rounded-full bg-background/80 border border-border flex items-center justify-center hover:border-primary/50 transition-colors">
+                            <Pencil className="h-4 w-4" />
+                          </div>
+                          <span className="text-[10px] font-medium">Editar</span>
+                        </button>
+                        <button
+                          onClick={() => setDeletePostId(post.id)}
+                          className="flex flex-col items-center gap-1 text-foreground hover:text-destructive transition-colors"
+                        >
+                          <div className="h-9 w-9 rounded-full bg-background/80 border border-border flex items-center justify-center hover:border-destructive/50 transition-colors">
+                            <Trash2 className="h-4 w-4" />
+                          </div>
+                          <span className="text-[10px] font-medium">Excluir</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* ── Edit Modal ────────────────────────────────────────────────── */}
+      <Dialog open={!!editPost} onOpenChange={(open) => !open && setEditPost(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar post</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-foreground">Legenda</label>
+              <Textarea
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                placeholder="Escreva uma legenda..."
+                className="resize-none min-h-[100px]"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-foreground">Nível de acesso</label>
+              <Select value={editPlan} onValueChange={setEditPlan}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="free">🌐 Todos (gratuito)</SelectItem>
+                  <SelectItem value="fan">💖 Fã</SelectItem>
+                  <SelectItem value="superfan">🔥 Super Fã</SelectItem>
+                  <SelectItem value="vip">💎 VIP</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditPost(null)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => editPost && updateMutation.mutate({ postId: editPost.id, text: editText, min_plan: editPlan })}
+              disabled={updateMutation.isPending}
+            >
+              {updateMutation.isPending ? "Salvando..." : "Salvar alterações"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete Confirmation ───────────────────────────────────────── */}
+      <AlertDialog open={!!deletePostId} onOpenChange={(open) => !open && setDeletePostId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir post?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. O post será removido permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deletePostId && deleteMutation.mutate(deletePostId)}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? "Excluindo..." : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
