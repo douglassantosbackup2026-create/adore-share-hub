@@ -105,6 +105,12 @@ Deno.serve(async (req) => {
       client: { ...cashInPayload.client, cpf: cpfClean.slice(0, 3) + "***" }
     }));
 
+    // Use service role to save pending payment (bypasses RLS)
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
     const cashInRes = await fetch(`${SYNCPAY_BASE}/api/partner/v1/cash-in`, {
       method: "POST",
       headers: {
@@ -169,6 +175,22 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
+    }
+
+    // Save pending payment so webhook can find fan_id/creator_id by syncpay_id
+    const { error: pendingErr } = await supabaseAdmin
+      .from("pending_payments")
+      .upsert({
+        syncpay_id: identifier,
+        fan_id: fanId,
+        creator_id,
+        plan: plan_name,
+        amount: amountFloat,
+      }, { onConflict: "syncpay_id" });
+
+    if (pendingErr) {
+      console.error("Failed to save pending payment:", pendingErr);
+      // Non-fatal: continue so user still gets QR code
     }
 
     return new Response(

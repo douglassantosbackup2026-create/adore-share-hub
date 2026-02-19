@@ -6,6 +6,9 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// Statuses that mean the payment was confirmed and money received
+const PAID_STATUSES = ["completed", "COMPLETED", "PAID_OUT", "paid", "PAID", "approved", "APPROVED"];
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -15,33 +18,24 @@ Deno.serve(async (req) => {
     const payload = await req.json();
     console.log("SyncPay webhook payload:", JSON.stringify(payload));
 
-    // SyncPay sends { data: { status, identifier, metadata, ... } }
+    // SyncPay sends { data: { status, idtransaction, ... } }
     const data = payload.data ?? payload;
     const status = data.status ?? payload.status;
-    const identifier = data.identifier ?? data.id ?? payload.identifier;
-    const metadata = data.metadata ?? payload.metadata ?? {};
+    const identifier = data.idtransaction ?? data.identifier ?? data.id ?? payload.identifier;
 
-    if (status !== "completed" && status !== "COMPLETED") {
+    if (!PAID_STATUSES.includes(status)) {
       console.log(`Ignoring status: ${status}`);
       return new Response(JSON.stringify({ ok: true, ignored: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const fanId = metadata.fan_id;
-    const creatorId = metadata.creator_id;
-    const plan = metadata.plan;
-    const amount = metadata.amount;
-
-    if (!fanId || !creatorId || !plan) {
-      console.error("Missing metadata fields:", metadata);
-      return new Response(
-        JSON.stringify({ error: "Missing metadata" }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+    if (!identifier) {
+      console.error("No identifier in webhook payload");
+      return new Response(JSON.stringify({ error: "Missing identifier" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Use service role key to bypass RLS
@@ -50,19 +44,39 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Idempotency: check if subscription already exists for this syncpay_id
-    const { data: existing } = await supabase
+    // Idempotency: check if subscription already activated for this syncpay_id
+    const { data: existingSub } = await supabase
       .from("subscriptions")
       .select("id")
       .eq("syncpay_id", identifier)
       .maybeSingle();
 
-    if (existing) {
+    if (existingSub) {
       console.log("Subscription already activated for identifier:", identifier);
       return new Response(JSON.stringify({ ok: true, duplicate: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Look up pending payment to get fan_id, creator_id, plan
+    const { data: pending, error: pendingErr } = await supabase
+      .from("pending_payments")
+      .select("fan_id, creator_id, plan, amount")
+      .eq("syncpay_id", identifier)
+      .maybeSingle();
+
+    if (pendingErr || !pending) {
+      console.error("Pending payment not found for identifier:", identifier, pendingErr);
+      return new Response(
+        JSON.stringify({ error: "Pending payment not found", identifier }),
+        {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const { fan_id: fanId, creator_id: creatorId, plan, amount } = pending;
 
     // Deactivate any previous subscription for this fan+creator
     await supabase
@@ -93,7 +107,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Fire Meta Purchase event
+    // Clean up pending payment record
+    await supabase
+      .from("pending_payments")
+      .delete()
+      .eq("syncpay_id", identifier);
+
+    // Fire Meta Purchase event (non-fatal)
     try {
       const projectId = Deno.env.get("SUPABASE_URL")!
         .split(".")[0]
@@ -114,7 +134,7 @@ Deno.serve(async (req) => {
       console.error("Meta CAPI error (non-fatal):", metaErr);
     }
 
-    console.log(`Subscription activated: fan=${fanId} creator=${creatorId} plan=${plan}`);
+    console.log(`Subscription activated: fan=${fanId} creator=${creatorId} plan=${plan} identifier=${identifier}`);
 
     return new Response(JSON.stringify({ ok: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
