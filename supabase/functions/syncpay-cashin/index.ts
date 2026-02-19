@@ -84,35 +84,58 @@ Deno.serve(async (req) => {
     const webhookUrl = `https://${projectId}.supabase.co/functions/v1/syncpay-webhook`;
 
     // Generate Pix charge
+    const amountInCents = Math.round(Number(amount) * 100);
+    const cpfClean = String(fan_cpf).replace(/\D/g, "");
+
+    const cashInPayload = {
+      amount: amountInCents,
+      description: `Assinatura ${creator_name ?? "Criador"} - Plano ${plan_name}`,
+      webhook_url: webhookUrl,
+      client: {
+        name: fan_name,
+        email: fanEmail,
+        document: cpfClean,
+      },
+      metadata: {
+        fan_id: fanId,
+        creator_id,
+        plan: plan_name,
+        amount,
+      },
+    };
+
+    console.log("SyncPay cash-in payload:", JSON.stringify({ ...cashInPayload, client: { ...cashInPayload.client, document: cpfClean.slice(0, 3) + "***" } }));
+
     const cashInRes = await fetch(`${SYNCPAY_BASE}/api/partner/v1/cash-in`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Accept: "application/json",
         Authorization: `Bearer ${syncpayToken}`,
       },
-      body: JSON.stringify({
-        amount: Math.round(amount * 100), // in cents
-        description: `Assinatura ${creator_name ?? "Criador"} - Plano ${plan_name}`,
-        webhook_url: webhookUrl,
-        client: {
-          name: fan_name,
-          email: fanEmail,
-          document: fan_cpf.replace(/\D/g, ""),
-        },
-        metadata: {
-          fan_id: fanId,
-          creator_id,
-          plan: plan_name,
-          amount,
-        },
-      }),
+      body: JSON.stringify(cashInPayload),
     });
 
+    const contentType = cashInRes.headers.get("content-type") ?? "";
+    console.log("SyncPay cash-in status:", cashInRes.status, "content-type:", contentType);
+
     if (!cashInRes.ok) {
-      const text = await cashInRes.text();
-      console.error("SyncPay cash-in error:", text);
+      let detail: string;
+      if (contentType.includes("application/json")) {
+        try {
+          const errJson = await cashInRes.json();
+          detail = JSON.stringify(errJson);
+          console.error("SyncPay cash-in error (json):", detail);
+        } catch {
+          detail = await cashInRes.text();
+          console.error("SyncPay cash-in error (text):", detail);
+        }
+      } else {
+        detail = await cashInRes.text();
+        console.error("SyncPay cash-in error (non-json):", detail.substring(0, 300));
+      }
       return new Response(
-        JSON.stringify({ error: "Erro ao gerar cobrança Pix", detail: text }),
+        JSON.stringify({ error: "Erro ao gerar cobrança Pix", detail }),
         {
           status: 502,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
