@@ -69,10 +69,10 @@ const Settings = () => {
         if (data?.length) {
           const map: Record<string, string> = {};
           data.forEach((p) => {
-            const key = p.plan_name.toLowerCase().replace(/\s/g, "");
-            if (key === "fã" || key === "fa") map.fan = p.price.toString();
-            else if (key.includes("super")) map.superfan = p.price.toString();
-            else if (key.includes("vip")) map.vip = p.price.toString();
+            const normalized = p.plan_name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+            if (normalized === "fa" || normalized === "fan") map.fan = p.price.toString();
+            else if (normalized.includes("super")) map.superfan = p.price.toString();
+            else if (normalized.includes("vip")) map.vip = p.price.toString();
           });
           setPlans((prev) => ({ ...prev, ...map }));
         }
