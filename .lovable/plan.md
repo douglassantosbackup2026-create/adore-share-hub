@@ -1,58 +1,124 @@
 
-# Remover usuário anajulia_858d
+# Aprovação de Criadores pelo Admin
 
-## Identificação do usuário
+## Diagnóstico
 
-| Campo | Valor |
-|---|---|
-| Nome | Ana Julia |
-| Handle | anajulia_858d |
-| ID | 858d1fb6-2743-473b-98c0-18340a13896b |
-| Role | creator |
-| Posts | 0 |
-| Seguidores | 0 |
-| Assinaturas | 0 |
-| Mensagens | 0 |
+Hoje, qualquer pessoa que se cadastra como criador recebe imediatamente `role = 'creator'` e acesso total ao dashboard. O objetivo é intercalar uma etapa de aprovação: o criador fica em estado "pendente" até que um admin aprove manualmente.
 
-O perfil não possui nenhum dado associado, tornando a remoção segura e sem risco de perda de conteúdo.
-
-Existe um segundo usuário chamado "Ana Julia" (handle: `anajulia_8a86`) que NÃO será afetado.
+**Restrição importante**: usuários já cadastrados não são afetados — o sistema de aprovação se aplica somente a novos cadastros.
 
 ---
 
-## O que será removido
+## Arquitetura da solução
 
-1. Registro na tabela `profiles` (ID: `858d1fb6-2743-473b-98c0-18340a13896b`)
-2. Registro na tabela `user_roles` (role padrão `user` criada no signup)
+### Campo novo: `approved` na tabela `profiles`
 
-A conta de autenticação (login/senha) só pode ser removida via função de banco de dados com privilégios elevados (`admin_ban_user`), que já está disponível no projeto e exclui o perfil do usuário.
-
----
-
-## Abordagem técnica
-
-Usar a função RPC `admin_ban_user` que já existe no banco de dados:
+Será adicionado um campo booleano `approved` com valor padrão `true` para não afetar ninguém já cadastrado. Novos criadores receberão `approved = false` ao se registrar.
 
 ```sql
-SELECT admin_ban_user('858d1fb6-2743-473b-98c0-18340a13896b');
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS approved boolean NOT NULL DEFAULT true;
 ```
 
-Esta função:
-- Verifica que quem chama tem role `admin`
-- Deleta o registro de `profiles` correspondente
+O trigger `handle_new_user` (que já existe no banco) será atualizado para inserir `approved = false` quando `role = 'creator'`:
 
-Após isso, também remover o registro de `user_roles`:
 ```sql
-DELETE FROM user_roles WHERE user_id = '858d1fb6-2743-473b-98c0-18340a13896b';
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.profiles (id, role, name, handle, category, approved)
+  VALUES (
+    NEW.id,
+    COALESCE(NEW.raw_user_meta_data->>'role', 'fan'),
+    COALESCE(NEW.raw_user_meta_data->>'name', ''),
+    NEW.raw_user_meta_data->>'handle',
+    NEW.raw_user_meta_data->>'category',
+    -- Novos criadores ficam pendentes; fãs são aprovados automaticamente
+    CASE WHEN COALESCE(NEW.raw_user_meta_data->>'role', 'fan') = 'creator' THEN false ELSE true END
+  );
+  INSERT INTO public.user_roles (user_id, role)
+  VALUES (NEW.id, 'user');
+  RETURN NEW;
+END;
+$$;
 ```
+
+> Usuários já existentes **não são alterados** — o `DEFAULT true` garante isso.
 
 ---
 
-## Sequência de execução
+## O que muda em cada camada
+
+### 1. Banco de dados (migração SQL)
+- Adicionar coluna `approved boolean NOT NULL DEFAULT true` em `profiles`
+- Atualizar função `handle_new_user` para definir `approved = false` quando `role = 'creator'`
+- Criar trigger na tabela `auth.users` que aciona `handle_new_user` (caso ainda não exista — verificar)
+
+### 2. `src/components/CreatorRoute.tsx`
+Bloquear o acesso ao dashboard se o criador não estiver aprovado, redirecionando para uma página de aguardo:
+
+```
+profile.role === 'creator' AND profile.approved === false → /pending-approval
+```
+
+### 3. Nova página: `src/pages/PendingApproval.tsx`
+Tela simples informando ao criador que seu cadastro está aguardando aprovação do admin, com um botão para voltar ao início.
+
+### 4. `src/App.tsx`
+Adicionar a rota `/pending-approval` (pública, sem guard).
+
+### 5. `src/pages/Admin.tsx` — aba "Criadores"
+Adicionar sub-seção "Criadores Pendentes" na aba de criadores existente, com:
+- Lista de criadores com `approved = false`
+- Botão "Aprovar" que faz `UPDATE profiles SET approved = true WHERE id = ?`
+- Badge de status (pendente / aprovado) na tabela principal
+
+### 6. `src/hooks/useAdminCreators.ts`
+Adicionar hook auxiliar `useAdminPendingCreators` para buscar `profiles WHERE role = 'creator' AND approved = false`.
+
+### 7. `src/contexts/AuthContext.tsx`
+A interface `Profile` já inclui todos os campos de `profiles` via `select("*")` — ao adicionar a coluna `approved` ao banco, ela fica disponível automaticamente sem mudança de código. Apenas adicionar `approved: boolean` à interface `Profile`.
+
+---
+
+## Fluxo completo pós-implementação
 
 ```text
-1. Executar admin_ban_user via SQL para deletar o profile
-2. Deletar registro de user_roles
+Signup como creator
+      ↓
+profiles.approved = false
+      ↓
+Login → CreatorRoute detecta approved = false
+      ↓
+Redireciona para /pending-approval
+      ↓
+Admin acessa /admin → aba "Criadores" → seção "Pendentes"
+      ↓
+Admin clica "Aprovar"
+      ↓
+profiles.approved = true
+      ↓
+Criador faz login → acessa /dashboard normalmente
 ```
 
-Isso removerá completamente o usuário `anajulia_858d` do sistema sem afetar nenhum outro usuário.
+---
+
+## Sequência de implementação
+
+```text
+1. Migração SQL: ADD COLUMN approved + atualizar handle_new_user
+2. Atualizar interface Profile em AuthContext.tsx
+3. Criar src/pages/PendingApproval.tsx
+4. Atualizar src/components/CreatorRoute.tsx (checar approved)
+5. Atualizar src/App.tsx (adicionar rota /pending-approval)
+6. Criar hook useAdminPendingCreators em useAdminCreators.ts
+7. Atualizar src/pages/Admin.tsx (adicionar seção de aprovação na aba Criadores)
+```
+
+---
+
+## O que NÃO muda
+- Usuários já cadastrados continuam com `approved = true` (valor padrão da nova coluna)
+- Fãs continuam sem nenhuma restrição
+- Todo o restante do fluxo (posts, subscriptions, mensagens) permanece intacto
