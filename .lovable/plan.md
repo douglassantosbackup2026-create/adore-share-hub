@@ -1,86 +1,37 @@
 
-# Meus Posts na Página de Perfil (`/profile/:id`)
+# Diagnóstico e Correção
 
-## Contexto atual
+## O que foi encontrado
 
-A página `/profile/:id` (`FanProfile.tsx`) é usada tanto por fãs quanto por criadores. Atualmente ela mostra:
-- Criadores seguidos
-- Assinaturas ativas
+### Problema 1 — Planos com R$ 0,00
+A tabela `creator_plans` está **vazia** para a Ana Julia. Os planos que aparecem na tela com R$ 0,00 são os valores padrão calculados pelo frontend (não vêm do banco). O botão "Salvar" na aba de Planos em `/settings` precisa ser clicado para persistir os valores.
 
-O objetivo é: quando o dono do perfil for um **criador**, exibir também uma grade com seus posts publicados, com opção de **editar** (legenda e nível de acesso) e **excluir** cada post.
+Porém, existe um bug no código que impede a gravação: a função `handleSavePlans` faz um `upsert` com `onConflict: "creator_id,plan_name"`, mas para isso funcionar precisa existir uma **unique constraint** na tabela `creator_plans`. Se essa constraint não existir, o upsert falha silenciosamente.
 
----
+### Problema 2 — "Meus Posts" não aparece na página atual
+A seção com edição/exclusão de posts foi criada em `/profile/:id` (FanProfile). Mas o usuário está em `/creator/:id` — que é a **página pública** do criador. São rotas completamente diferentes.
 
-## O que NÃO muda
-
-- Fãs continuam vendo o perfil normalmente (sem seção de posts)
-- A lógica de seguir e assinaturas permanece intacta
-- Nenhuma migração de banco de dados é necessária — as RLS já permitem criadores deletar/atualizar seus próprios posts
+Quando o criador acessa seu próprio perfil público (`/creator/:id`), não há nenhuma indicação de que existe uma área de gestão, nem botão de atalho.
 
 ---
 
-## Mudanças planejadas
+## O que será feito
 
-### 1. `src/pages/FanProfile.tsx` — seção de posts do criador
+### 1. Corrigir o salvamento dos planos (Settings)
+Adicionar uma migração SQL que garante a unique constraint em `creator_plans(creator_id, plan_name)`, para que o upsert funcione corretamente.
 
-Adicionar, **apenas quando `isOwn === true` e `profile.role === 'creator'`**, uma nova seção abaixo do grid de seguindo/assinaturas com:
+Também corrigir o carregamento dos planos existentes no Settings — o mapeamento atual usa `plan_name.toLowerCase()` para identificar "fã", mas o banco guarda "Fã" com acento. Será ajustado para comparar de forma robusta (usando `includes` ou `trim`).
 
-**Grade de posts** (estilo Instagram — 3 colunas):
-- Miniatura da mídia (imagem ou ícone de vídeo)
-- Post sem mídia: mostra balão de texto
-- Em cada post: badge do nível de acesso (🌐 Todos / 💖 Fã / 🔥 Super Fã / 💎 VIP)
-- Ao passar o mouse: overlay com botões de **Editar** e **Excluir**
+### 2. Adicionar painel de gestão na página `/creator/:id` para o próprio criador
 
-**Modal de Edição:**
-- Campo de textarea para editar legenda
-- Select para alterar nível de acesso mínimo (`free` / `fan` / `superfan` / `vip`)
-- Botão "Salvar alterações" — chama `UPDATE posts SET text = ?, min_plan = ? WHERE id = ?`
+Quando o usuário logado é o dono do perfil (`user.id === id`), mostrar na página `/creator/:id`:
 
-**Modal de confirmação de Exclusão:**
-- Diálogo de alerta pedindo confirmação
-- Botão "Excluir" — chama `DELETE FROM posts WHERE id = ?`
+- Um **botão "Gerenciar perfil"** no header (ao lado do avatar), que leva ao `/settings`
+- Uma **seção "Meus Posts"** abaixo dos posts públicos, com a mesma grade 3 colunas + hover com botões de Editar e Excluir (igual ao que foi implementado no FanProfile)
+- Modal de edição de legenda e nível de acesso
+- Modal de confirmação de exclusão
 
-### 2. Novo hook `useMyPosts` (dentro de `FanProfile.tsx` ou arquivo separado)
-
-```ts
-// Busca os posts do criador logado
-const { data: posts } = useQuery({
-  queryKey: ["myPosts", id],
-  enabled: isOwn && profile?.role === "creator",
-  queryFn: async () => supabase
-    .from("posts")
-    .select("*")
-    .eq("creator_id", id)
-    .order("created_at", { ascending: false })
-})
-
-// Mutation para editar
-const editPost = useMutation(...)
-
-// Mutation para excluir
-const deletePost = useMutation(...)
-```
-
-As políticas RLS existentes já cobrem isso:
-- `Creators can update their own posts` → permite UPDATE
-- `Creators can delete their own posts` → permite DELETE
-
----
-
-## Fluxo de interação
-
-```text
-Criador acessa /profile/:seuId
-         ↓
-Seção "Meus Posts" é exibida abaixo do perfil
-         ↓
-Hover sobre um post → aparecem botões ✏️ Editar e 🗑️ Excluir
-         ↓
-[Editar] → Abre modal com legenda atual e nível de acesso
-           → Salva → UPDATE no banco → cache invalidado → grade atualiza
-[Excluir] → Abre alerta de confirmação
-           → Confirma → DELETE no banco → cache invalidado → post desaparece
-```
+Isso unifica a gestão na página que o criador já usa naturalmente.
 
 ---
 
@@ -88,6 +39,26 @@ Hover sobre um post → aparecem botões ✏️ Editar e 🗑️ Excluir
 
 | Arquivo | Alteração |
 |---|---|
-| `src/pages/FanProfile.tsx` | Adicionar seção de posts, modais de edição e exclusão, queries e mutations |
+| `supabase/migrations/` | Adicionar unique constraint em `creator_plans(creator_id, plan_name)` |
+| `src/pages/Settings.tsx` | Corrigir mapeamento dos planos existentes (comparação sem acento) |
+| `src/pages/CreatorProfile.tsx` | Adicionar seção "Meus Posts" visível apenas ao dono, com editar/excluir |
 
-Apenas **um arquivo** é modificado. Não há migração de banco de dados.
+---
+
+## Fluxo após a correção
+
+```
+Criador acessa /creator/:seu-id
+       ↓
+Vê botão "Gerenciar perfil" → leva ao /settings
+       ↓
+Abaixo dos posts públicos, aparece seção "Meus Posts" (só para ele)
+       ↓
+Hover em qualquer post → botões Editar / Excluir
+       ↓
+Edita legenda ou nível de acesso → salva direto no banco
+       ↓
+Ao ir em /settings → aba Planos → coloca os preços → clica Salvar
+       ↓
+Planos salvos no banco → aparecem corretamente na página pública
+```
