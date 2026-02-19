@@ -78,17 +78,19 @@ Deno.serve(async (req) => {
 
     // Get SyncPay bearer token
     const syncpayToken = await getSyncPayToken();
+    console.log("SyncPay token obtained (first 20 chars):", syncpayToken?.substring(0, 20));
 
     // Build webhook URL
     const projectId = Deno.env.get("SUPABASE_URL")!.split(".")[0].split("//")[1];
     const webhookUrl = `https://${projectId}.supabase.co/functions/v1/syncpay-webhook`;
 
     // Generate Pix charge
-    const amountInCents = Math.round(Number(amount) * 100);
+    // SyncPay expects amount in BRL (float), NOT cents
+    const amountFloat = Number(Number(amount).toFixed(2));
     const cpfClean = String(fan_cpf).replace(/\D/g, "");
 
     const cashInPayload = {
-      amount: amountInCents,
+      amount: amountFloat,
       description: `Assinatura ${creator_name ?? "Criador"} - Plano ${plan_name}`,
       webhook_url: webhookUrl,
       client: {
@@ -96,15 +98,12 @@ Deno.serve(async (req) => {
         cpf: cpfClean,
         email: fanEmail,
       },
-      metadata: {
-        fan_id: fanId,
-        creator_id,
-        plan: plan_name,
-        amount,
-      },
     };
 
-    console.log("SyncPay cash-in payload:", JSON.stringify({ ...cashInPayload, client: { ...cashInPayload.client, document: cpfClean.slice(0, 3) + "***" } }));
+    console.log("SyncPay cash-in payload:", JSON.stringify({
+      ...cashInPayload,
+      client: { ...cashInPayload.client, cpf: cpfClean.slice(0, 3) + "***" }
+    }));
 
     const cashInRes = await fetch(`${SYNCPAY_BASE}/api/partner/v1/cash-in`, {
       method: "POST",
