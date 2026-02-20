@@ -56,6 +56,8 @@ const Settings = () => {
         instagram: social.instagram || "",
         twitter: social.twitter || "",
         youtube: social.youtube || "",
+        meta_pixel_id: social.meta_pixel_id || "",
+        meta_access_token: social.meta_access_token || "",
       });
     }
   }, [authProfile]);
