@@ -99,6 +99,7 @@ export function PixPaymentModal({
       if (data) {
         stopPolling();
         setStep("success");
+        sessionStorage.removeItem("affiliate_ref");
         sendMetaEvent({
           event_name: "Purchase",
           user_email: fanEmail,
