@@ -11,11 +11,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-const withdrawals = [
-  { id: 1, amount: "R$ 3.200,00", date: "01/02/2026", status: "Concluído" },
-  { id: 2, amount: "R$ 2.800,00", date: "01/01/2026", status: "Concluído" },
-  { id: 3, amount: "R$ 1.950,00", date: "01/12/2025", status: "Concluído" },
-];
 
 const Settings = () => {
   const { profile: authProfile, user, refreshProfile } = useAuth();
