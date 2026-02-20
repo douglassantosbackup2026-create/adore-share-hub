@@ -621,17 +621,37 @@ function FinancialTab() {
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">Financeiro</h2>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Receita Total Estimada</CardTitle>
+            <CardTitle className="text-base">Receita Total Bruta</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold text-primary">
+            <p className="text-3xl font-bold">
               R$ {(stats?.estimated_revenue ?? 0).toFixed(2)}
             </p>
             <p className="text-sm text-muted-foreground mt-1">
               {stats?.total_active_subs ?? 0} assinaturas ativas
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Comissão da Plataforma (20%)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-primary">
+              R$ {((stats?.estimated_revenue ?? 0) * PLATFORM_FEE_RATE).toFixed(2)}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Repasse aos Criadores (80%)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-green-500">
+              R$ {((stats?.estimated_revenue ?? 0) * (1 - PLATFORM_FEE_RATE)).toFixed(2)}
             </p>
           </CardContent>
         </Card>
