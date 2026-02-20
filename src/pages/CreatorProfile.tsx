@@ -428,9 +428,11 @@ const CreatorProfile = () => {
                   key={plan.name}
                   onClick={() => setSelectedPlan(i)}
                   className={`relative rounded-2xl border p-5 cursor-pointer transition-all duration-200 ${
-                    selectedPlan === i
-                      ? "border-primary/60 bg-primary/5 shadow-glow"
-                      : "border-border/50 bg-gradient-card hover:border-primary/30"
+                    plan.popular
+                      ? `border-primary/60 ring-1 ring-primary/30 ${selectedPlan === i ? "bg-primary/5 shadow-glow" : "bg-gradient-card"}`
+                      : selectedPlan === i
+                        ? "border-primary/60 bg-primary/5 shadow-glow"
+                        : "border-border/50 bg-gradient-card hover:border-primary/30"
                   }`}
                 >
                   {plan.popular && (
