@@ -756,6 +756,179 @@ function FinancialTab() {
   );
 }
 
+// ── Affiliates Tab ───────────────────────────────────────────────────────────
+function AffiliatesTab() {
+  const { data: feeRate, isLoading: feeLoading } = useAffiliateFeeRate();
+  const updateFee = useUpdateAffiliateFee();
+  const { data: overview, isLoading: overviewLoading } = useAffiliateOverview();
+  const [localRate, setLocalRate] = useState("");
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (feeRate !== undefined && !localRate) setLocalRate((feeRate * 100).toFixed(0));
+  }, [feeRate]);
+
+  const handleSaveFee = async () => {
+    const val = parseFloat(localRate);
+    if (isNaN(val) || val < 0 || val > 50) {
+      toast({ title: "Valor inválido", description: "A taxa deve ser entre 0% e 50%.", variant: "destructive" });
+      return;
+    }
+    try {
+      await updateFee.mutateAsync(val / 100);
+      toast({ title: `Taxa de afiliado atualizada para ${val}%` });
+    } catch (e: any) {
+      toast({ title: "Erro ao salvar", description: e.message, variant: "destructive" });
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold">Programa de Afiliados</h2>
+
+      {/* Fee config card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Comissão do Afiliado</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground mb-4">
+            Defina a porcentagem que o afiliado recebe por cada assinatura gerada. Essa comissão é deduzida da parte da plataforma (20%), ou seja, o criador sempre recebe 80%.
+          </p>
+          <div className="flex items-center gap-3">
+            <Input
+              type="number"
+              min={0}
+              max={50}
+              value={localRate}
+              onChange={(e) => setLocalRate(e.target.value)}
+              className="w-24"
+              placeholder="5"
+            />
+            <span className="text-sm text-muted-foreground">%</span>
+            <Button onClick={handleSaveFee} disabled={updateFee.isPending} size="sm">
+              {updateFee.isPending ? "Salvando..." : "Salvar"}
+            </Button>
+          </div>
+          {feeRate !== undefined && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Atual: {(feeRate * 100).toFixed(0)}% — Plataforma fica com {(20 - feeRate * 100).toFixed(0)}% e afiliado com {(feeRate * 100).toFixed(0)}%.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Active affiliates table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Afiliados Ativos</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Afiliado</TableHead>
+                <TableHead>Links gerados</TableHead>
+                <TableHead>Conversões</TableHead>
+                <TableHead>Comissão Total</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {overviewLoading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <TableRow key={i}>
+                    {Array.from({ length: 4 }).map((_, j) => (
+                      <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : !overview?.affiliates?.length ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                    Nenhum afiliado ativo ainda.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                overview.affiliates.map((a) => (
+                  <TableRow key={a.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={a.avatar || undefined} />
+                          <AvatarFallback>{a.name[0]}</AvatarFallback>
+                        </Avatar>
+                        <span className="font-medium">{a.name}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>{a.linkCount}</TableCell>
+                    <TableCell>{a.conversions}</TableCell>
+                    <TableCell className="font-semibold text-primary">
+                      R$ {a.totalCommission.toFixed(2)}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Recent referrals */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Conversões Recentes</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Afiliado</TableHead>
+                <TableHead>Taxa</TableHead>
+                <TableHead>Comissão</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Data</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {overviewLoading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <TableRow key={i}>
+                    {Array.from({ length: 5 }).map((_, j) => (
+                      <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : !overview?.recentReferrals?.length ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                    Nenhuma conversão registrada.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                overview.recentReferrals.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-medium">{r.affiliateName}</TableCell>
+                    <TableCell>{(r.commissionRate * 100).toFixed(0)}%</TableCell>
+                    <TableCell className="font-semibold">R$ {Number(r.commissionAmount).toFixed(2)}</TableCell>
+                    <TableCell>
+                      <Badge variant={r.status === "pending" ? "secondary" : "default"}>
+                        {r.status === "pending" ? "Pendente" : r.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {new Date(r.createdAt).toLocaleDateString("pt-BR")}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ── Main Admin Page ──────────────────────────────────────────────────────────
 export default function Admin() {
   const [activeSection, setActiveSection] = useState<Section>("overview");
@@ -768,6 +941,7 @@ export default function Admin() {
       case "creators": return <CreatorsTab />;
       case "posts": return <PostsTab />;
       case "financial": return <FinancialTab />;
+      case "affiliates": return <AffiliatesTab />;
     }
   };
 
