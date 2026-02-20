@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { PLATFORM_FEE_RATE } from "@/lib/constants";
 
 export function useDashboardStats() {
   const { user } = useAuth();
@@ -27,9 +28,10 @@ export function useDashboardStats() {
       const planPriceMap = new Map<string, number>();
       plans?.forEach((p) => planPriceMap.set(p.plan_name, p.price));
 
-      const revenue = (subs ?? []).reduce((sum, s) => {
+      const grossRevenue = (subs ?? []).reduce((sum, s) => {
         return sum + (planPriceMap.get(s.plan) ?? 0);
       }, 0);
+      const revenue = grossRevenue * (1 - PLATFORM_FEE_RATE);
 
       // Post count
       const { count: postCount } = await supabase

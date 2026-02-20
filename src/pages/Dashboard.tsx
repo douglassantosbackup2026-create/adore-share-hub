@@ -58,12 +58,13 @@ const Dashboard = () => {
 
   const stats = [
     {
-      label: "Receita Mensal",
+      label: "Receita Líquida",
       value: dashStats ? `R$ ${dashStats.revenue.toLocaleString("pt-BR")}` : "R$ 6.100",
       change: "+18%",
       up: true,
       icon: DollarSign,
       color: "text-green-400",
+      note: "após taxa de 20%",
     },
     {
       label: "Assinantes",
@@ -172,6 +173,9 @@ const Dashboard = () => {
             <div key={stat.label} className="glass-card rounded-2xl p-5 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">{stat.label}</span>
+                {"note" in stat && (stat as any).note && (
+                  <span className="text-[10px] text-muted-foreground/70 block">{(stat as any).note}</span>
+                )}
                 <div className={`flex h-8 w-8 items-center justify-center rounded-full bg-muted/30 ${stat.color}`}>
                   <stat.icon className="h-4 w-4" />
                 </div>
@@ -195,7 +199,7 @@ const Dashboard = () => {
           <div className="lg:col-span-2 glass-card rounded-2xl p-6">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="font-semibold text-foreground">Receita Mensal</h2>
+                <h2 className="font-semibold text-foreground">Receita Líquida</h2>
                 <p className="text-sm text-muted-foreground">Últimos 6 meses</p>
               </div>
               <div className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5">

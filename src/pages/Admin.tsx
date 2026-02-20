@@ -22,6 +22,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { usePlatformStats } from "@/hooks/usePlatformStats";
+import { PLATFORM_FEE_RATE } from "@/lib/constants";
 import { useAdminUsers } from "@/hooks/useAdminUsers";
 import { useAdminPosts, useAdminDeletePost } from "@/hooks/useAdminPosts";
 import { useAdminCreators, useAdminPendingCreators, useApproveCreator } from "@/hooks/useAdminCreators";
@@ -620,17 +621,37 @@ function FinancialTab() {
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">Financeiro</h2>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Receita Total Estimada</CardTitle>
+            <CardTitle className="text-base">Receita Total Bruta</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold text-primary">
+            <p className="text-3xl font-bold">
               R$ {(stats?.estimated_revenue ?? 0).toFixed(2)}
             </p>
             <p className="text-sm text-muted-foreground mt-1">
               {stats?.total_active_subs ?? 0} assinaturas ativas
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Comissão da Plataforma (20%)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-primary">
+              R$ {((stats?.estimated_revenue ?? 0) * PLATFORM_FEE_RATE).toFixed(2)}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Repasse aos Criadores (80%)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-green-500">
+              R$ {((stats?.estimated_revenue ?? 0) * (1 - PLATFORM_FEE_RATE)).toFixed(2)}
             </p>
           </CardContent>
         </Card>
@@ -648,14 +669,16 @@ function FinancialTab() {
                 <TableHead>Criador</TableHead>
                 <TableHead>Categoria</TableHead>
                 <TableHead>Assinantes</TableHead>
-                <TableHead>Receita Est.</TableHead>
+                <TableHead>Receita Bruta</TableHead>
+                <TableHead>Comissão (20%)</TableHead>
+                <TableHead>Repasse (80%)</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {creatorsLoading
                 ? Array.from({ length: 5 }).map((_, i) => (
                     <TableRow key={i}>
-                      {Array.from({ length: 5 }).map((_, j) => (
+                      {Array.from({ length: 7 }).map((_, j) => (
                         <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                       ))}
                     </TableRow>
@@ -671,8 +694,14 @@ function FinancialTab() {
                       </TableCell>
                       <TableCell>{c.creator_category ?? "—"}</TableCell>
                       <TableCell>{c.active_subs}</TableCell>
-                      <TableCell className="font-semibold text-primary">
+                      <TableCell className="font-semibold">
                         R$ {c.estimated_revenue.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-primary">
+                        R$ {(c.estimated_revenue * PLATFORM_FEE_RATE).toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-green-500 font-semibold">
+                        R$ {(c.estimated_revenue * (1 - PLATFORM_FEE_RATE)).toFixed(2)}
                       </TableCell>
                     </TableRow>
                   ))}
