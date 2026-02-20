@@ -31,7 +31,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useMonthlyRevenue } from "@/hooks/useMonthlyRevenue";
 
-type Section = "overview" | "users" | "creators" | "posts" | "financial";
+type Section = "overview" | "users" | "creators" | "posts" | "financial" | "affiliates";
 
 const navItems = [
   { id: "overview" as Section, label: "Visão Geral", icon: LayoutDashboard },
@@ -39,6 +39,7 @@ const navItems = [
   { id: "creators" as Section, label: "Criadores", icon: Star },
   { id: "posts" as Section, label: "Posts", icon: FileText },
   { id: "financial" as Section, label: "Financeiro", icon: DollarSign },
+  { id: "affiliates" as Section, label: "Afiliados", icon: Link2 },
 ];
 
 // ── Overview Tab ────────────────────────────────────────────────────────────
