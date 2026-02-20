@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { PLATFORM_FEE_RATE } from "@/lib/constants";
 
 export function useDashboardStats() {
   const { user } = useAuth();
