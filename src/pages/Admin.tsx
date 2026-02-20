@@ -763,8 +763,21 @@ function AffiliatesTab() {
   const { data: feeRate, isLoading: feeLoading } = useAffiliateFeeRate();
   const updateFee = useUpdateAffiliateFee();
   const { data: overview, isLoading: overviewLoading } = useAffiliateOverview();
+  const { data: affiliateRequests, isLoading: reqLoading } = useAdminAffiliateRequests();
+  const updateRequest = useUpdateAffiliateRequest();
   const [localRate, setLocalRate] = useState("");
   const { toast } = useToast();
+
+  const pendingRequests = (affiliateRequests ?? []).filter((r: any) => r.status === "pending");
+
+  const handleRequestAction = async (id: string, status: "approved" | "rejected", name: string) => {
+    try {
+      await updateRequest.mutateAsync({ id, status });
+      toast({ title: `${name} foi ${status === "approved" ? "aprovado" : "rejeitado"}.` });
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    }
+  };
 
   useEffect(() => {
     if (feeRate !== undefined && !localRate) setLocalRate((feeRate * 100).toFixed(0));
