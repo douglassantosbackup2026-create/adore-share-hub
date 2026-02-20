@@ -10,6 +10,6 @@ export function useCreatorPixel(pixelId: string | undefined) {
   useEffect(() => {
     if (!pixelId || !window.fbq) return;
     window.fbq("init", pixelId);
-    window.fbq("track", "PageView");
+    window.fbq("trackSingle", pixelId, "PageView");
   }, [pixelId]);
 }
