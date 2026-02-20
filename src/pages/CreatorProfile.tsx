@@ -63,6 +63,40 @@ const CreatorProfile = () => {
   const [selectedPlan, setSelectedPlan] = useState(0);
   const [pixModalOpen, setPixModalOpen] = useState(false);
 
+  // Capture ref code from URL
+  useEffect(() => {
+    const ref = searchParams.get("ref");
+    if (ref) {
+      sessionStorage.setItem("affiliate_ref", ref);
+    }
+  }, [searchParams]);
+
+  // Affiliate link management
+  const { links: affiliateLinks, createLink: createAffiliateLink } = useAffiliateLinks(id);
+
+  const handleShareAffiliate = async () => {
+    if (!user) {
+      toast.info("Faça login para compartilhar como afiliado");
+      return;
+    }
+    // Check if user already has a link for this creator
+    const existing = affiliateLinks.find((l: any) => l.creator_id === id);
+    if (existing) {
+      const url = `${window.location.origin}/profile/${id}?ref=${existing.code}`;
+      navigator.clipboard.writeText(url);
+      toast.success("Link de afiliado copiado!");
+      return;
+    }
+    try {
+      const newLink = await createAffiliateLink.mutateAsync(id!);
+      const url = `${window.location.origin}/profile/${id}?ref=${newLink.code}`;
+      navigator.clipboard.writeText(url);
+      toast.success("Link de afiliado gerado e copiado!");
+    } catch {
+      toast.error("Erro ao gerar link de afiliado");
+    }
+  };
+
   // Owner management state
   const queryClient = useQueryClient();
   const isOwner = !!user && !!id && user.id === id;
