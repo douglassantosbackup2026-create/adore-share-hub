@@ -11,7 +11,10 @@ export function useMonthlyRevenue(creatorId: string | undefined) {
         p_creator_id: creatorId!,
       });
       if (error) throw error;
-      return (data as { month: string; value: number }[]) ?? [];
+      return ((data as { month: string; value: number }[]) ?? []).map((d) => ({
+        ...d,
+        value: d.value * (1 - PLATFORM_FEE_RATE),
+      }));
     },
   });
 }
