@@ -1,80 +1,80 @@
 
-## Modelo de comissao de 20% da plataforma
+## Pixel do Meta para criadores
 
-Implementar uma taxa de 20% sobre cada assinatura, onde o criador recebe 80% e a plataforma retém 20%. A taxa sera aplicada em todos os pontos que calculam/exibem receita.
-
----
-
-### Constante global
-
-Criar um arquivo `src/lib/constants.ts` com:
-
-```
-PLATFORM_FEE_RATE = 0.20
-```
-
-Isso centraliza o percentual em um unico lugar, facilitando ajustes futuros.
+Permitir que cada criador configure seu proprio Pixel ID do Meta, para que eventos (como Purchase, ViewContent, InitiateCheckout) sejam disparados tanto para o pixel da plataforma quanto para o pixel do criador.
 
 ---
 
-### Alteracoes no frontend
+### Como funciona
 
-**1. Dashboard do Criador (`src/hooks/useDashboardStats.ts`)**
-
-No calculo de `revenue` (linha 30-32), multiplicar o total por `(1 - PLATFORM_FEE_RATE)` para que o criador veja apenas o valor liquido (80%):
-
-```
-revenue = totalBruto * 0.80
-```
-
-**2. Dashboard do Criador (`src/pages/Dashboard.tsx`)**
-
-Atualizar o label do card de receita (linha 62) de "Receita Mensal" para "Receita Liquida" e adicionar uma nota explicativa pequena indicando "apos taxa de 20%".
-
-**3. Grafico de receita mensal (`src/hooks/useMonthlyRevenue.ts`)**
-
-A funcao SQL `get_creator_monthly_revenue` calcula receita bruta. Duas opcoes:
-- Opcao A (mais simples): aplicar o fator 0.80 no frontend apos receber os dados
-- Opcao B: alterar a funcao SQL
-
-Usaremos a Opcao A para evitar migracao SQL — multiplicar cada `value` por 0.80 no hook.
-
-**4. Painel Admin — Financeiro (`src/pages/Admin.tsx`)**
-
-No painel financeiro do admin, exibir AMBOS os valores:
-- **Receita Total Bruta** (valor que os fans pagam)
-- **Comissao da Plataforma (20%)** (novo card)
-- **Repasse aos Criadores (80%)**
-
-Na tabela "Top 10 Criadores", a coluna "Receita Est." continuara mostrando o valor bruto, mas adicionaremos uma coluna "Comissao" com o valor de 20%.
-
-**5. Funcao SQL `get_admin_creator_stats`**
-
-Nao precisa alterar — o admin vera o bruto e o calculo de 20% sera feito no frontend.
-
-**6. Funcao SQL `get_platform_stats`**
-
-Mesma logica — manter bruto no banco e calcular no frontend.
+Quando um evento ocorre (ex: um fan compra uma assinatura), o sistema dispara dois eventos:
+1. Para o pixel da plataforma (ja existente)
+2. Para o pixel do criador (se configurado)
 
 ---
 
-### Pagina de Settings do Criador
+### Alteracoes necessarias
 
-Na aba "Pagamentos" (`src/pages/Settings.tsx`), adicionar um aviso informativo:
+**1. Armazenar o Pixel ID do criador**
 
-> "A plataforma retém 20% de cada assinatura como taxa de servico. Voce recebe 80% do valor dos seus planos."
+Usar o campo `social_links` (jsonb) da tabela `profiles` para guardar o `meta_pixel_id`. Nao precisa de migracao -- o campo ja aceita qualquer JSON.
+
+**2. Settings -- nova secao "Pixel do Meta" (src/pages/Settings.tsx)**
+
+Na aba "Perfil" ou como nova aba, adicionar um campo de input para o criador informar seu Pixel ID e Access Token do Meta (CAPI). Os dados serao salvos em `social_links.meta_pixel_id` e `social_links.meta_access_token`.
+
+**3. Atualizar a edge function `meta-capi` (supabase/functions/meta-capi/index.ts)**
+
+Aceitar parametros opcionais `creator_pixel_id` e `creator_access_token`. Se fornecidos, alem de disparar para o pixel da plataforma, disparar um segundo evento identico para o pixel do criador.
+
+**4. Atualizar `sendMetaEvent` (src/lib/metaCapi.ts)**
+
+Adicionar parametros opcionais `creator_pixel_id` e `creator_access_token` na interface. Os chamadores que sabem o criador (PixPaymentModal, CreatorProfile) passarao esses dados.
+
+**5. Atualizar os chamadores**
+
+- `PixPaymentModal.tsx`: receber `creatorPixelId` e `creatorAccessToken` como props (vindos do perfil do criador) e passar para `sendMetaEvent`.
+- `CreatorProfile.tsx`: buscar o pixel do criador no perfil carregado e passar nos eventos ViewContent e InitiateCheckout.
+- `syncpay-webhook`: o webhook ja chama meta-capi; sera atualizado para buscar o perfil do criador e incluir o pixel dele na chamada.
 
 ---
 
-### Resumo das alteracoes
+### Detalhes tecnicos
 
-| Arquivo | O que muda |
+**Campo em `social_links`:**
+```json
+{
+  "instagram": "...",
+  "twitter": "...",
+  "youtube": "...",
+  "meta_pixel_id": "1234567890",
+  "meta_access_token": "EAABs..."
+}
+```
+
+**Edge function `meta-capi` -- logica dupla:**
+```
+1. Disparar evento para PIXEL_ID da plataforma (hardcoded)
+2. Se creator_pixel_id + creator_access_token presentes:
+   - Disparar mesmo evento para o pixel do criador
+```
+
+**UI em Settings:**
+- Campo "Pixel ID do Meta" com placeholder "Ex: 1234567890"
+- Campo "Token de acesso (CAPI)" com placeholder e link de ajuda
+- Salvo junto com as outras social_links no handleSaveProfile
+
+---
+
+### Resumo dos arquivos alterados
+
+| Arquivo | Alteracao |
 |---|---|
-| `src/lib/constants.ts` (novo) | Constante `PLATFORM_FEE_RATE = 0.20` |
-| `src/hooks/useDashboardStats.ts` | Receita multiplicada por 0.80 |
-| `src/hooks/useMonthlyRevenue.ts` | Valores do grafico multiplicados por 0.80 |
-| `src/pages/Dashboard.tsx` | Label "Receita Liquida" + nota da taxa |
-| `src/pages/Admin.tsx` | Cards separados: bruto, comissao 20%, repasse 80% |
-| `src/pages/Settings.tsx` | Aviso sobre taxa de 20% na aba Pagamentos |
+| `src/pages/Settings.tsx` | Campos para Pixel ID e Access Token na aba perfil |
+| `src/lib/metaCapi.ts` | Parametros opcionais creator_pixel_id e creator_access_token |
+| `supabase/functions/meta-capi/index.ts` | Disparo duplo: plataforma + criador |
+| `src/components/PixPaymentModal.tsx` | Passar pixel do criador para sendMetaEvent |
+| `src/pages/CreatorProfile.tsx` | Passar pixel do criador nos eventos ViewContent/InitiateCheckout |
+| `supabase/functions/syncpay-webhook/index.ts` | Buscar pixel do criador e incluir na chamada meta-capi |
 
-Nenhuma alteracao de banco de dados e necessaria. A taxa e aplicada puramente na camada de exibicao, o que permite ajustar o percentual facilmente no futuro.
+Nenhuma migracao de banco necessaria -- o campo `social_links` (jsonb) ja suporta dados adicionais.
