@@ -564,6 +564,8 @@ const CreatorProfile = () => {
           amount={plans[selectedPlan].price}
           fanId={user.id}
           fanEmail={user.email ?? ""}
+          creatorPixelId={creatorPixelId}
+          creatorAccessToken={creatorAccessToken}
         />
       )}
 
