@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { PLATFORM_FEE_RATE } from "@/lib/constants";
 
 export function useMonthlyRevenue(creatorId: string | undefined) {
   return useQuery({
