@@ -96,6 +96,8 @@ const Settings = () => {
           instagram: profileForm.instagram,
           twitter: profileForm.twitter,
           youtube: profileForm.youtube,
+          meta_pixel_id: profileForm.meta_pixel_id,
+          meta_access_token: profileForm.meta_access_token,
         },
       });
 
