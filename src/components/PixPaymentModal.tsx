@@ -47,6 +47,8 @@ export function PixPaymentModal({
   amount,
   fanId,
   fanEmail,
+  creatorPixelId,
+  creatorAccessToken,
 }: PixPaymentModalProps) {
   const [step, setStep] = useState<Step>("form");
   const [fanName, setFanName] = useState("");
