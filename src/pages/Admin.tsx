@@ -22,6 +22,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { usePlatformStats } from "@/hooks/usePlatformStats";
+import { PLATFORM_FEE_RATE } from "@/lib/constants";
 import { useAdminUsers } from "@/hooks/useAdminUsers";
 import { useAdminPosts, useAdminDeletePost } from "@/hooks/useAdminPosts";
 import { useAdminCreators, useAdminPendingCreators, useApproveCreator } from "@/hooks/useAdminCreators";
