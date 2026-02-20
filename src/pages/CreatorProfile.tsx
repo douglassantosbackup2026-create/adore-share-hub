@@ -50,6 +50,7 @@ const postTypes = ["Todos", "Fotos", "Vídeos", "Lives"];
 
 const CreatorProfile = () => {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   
