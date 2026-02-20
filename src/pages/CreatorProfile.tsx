@@ -267,9 +267,20 @@ const CreatorProfile = () => {
         >
           <ChevronLeft className="h-4 w-4" /> Voltar
         </Link>
-        <button className="absolute top-6 right-6 flex h-9 w-9 items-center justify-center rounded-full bg-background/60 backdrop-blur-sm border border-border/50 text-foreground hover:bg-background/80 transition-colors">
-          <Share2 className="h-4 w-4" />
-        </button>
+        <div className="flex gap-2">
+          <button className="flex h-9 w-9 items-center justify-center rounded-full bg-background/60 backdrop-blur-sm border border-border/50 text-foreground hover:bg-background/80 transition-colors">
+            <Share2 className="h-4 w-4" />
+          </button>
+          {user && !isOwner && (
+            <button
+              onClick={handleShareAffiliate}
+              className="flex items-center gap-1.5 rounded-full bg-background/60 backdrop-blur-sm border border-border/50 px-3 py-2 text-sm font-medium text-foreground hover:bg-background/80 transition-colors"
+            >
+              <Link2 className="h-4 w-4" />
+              Afiliado
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="container max-w-6xl">
