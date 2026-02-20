@@ -104,6 +104,8 @@ export function PixPaymentModal({
           user_email: fanEmail,
           value: amount,
           currency: "BRL",
+          creator_pixel_id: creatorPixelId,
+          creator_access_token: creatorAccessToken,
         });
         setTimeout(() => {
           onSuccess();

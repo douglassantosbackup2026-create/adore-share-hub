@@ -211,6 +211,8 @@ const CreatorProfile = () => {
       user_email: user.email,
       value: plans[selectedPlan].price,
       currency: "BRL",
+      creator_pixel_id: creatorPixelId,
+      creator_access_token: creatorAccessToken,
     });
     setPixModalOpen(true);
   };
