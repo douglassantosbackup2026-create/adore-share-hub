@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
     const fanEmail = claimsData.claims.email as string;
 
     const body = await req.json();
-    const { creator_id, plan_name, amount, fan_name, fan_cpf, creator_name } =
+    const { creator_id, plan_name, amount, fan_name, fan_cpf, creator_name, affiliate_ref } =
       body;
 
     if (!creator_id || !plan_name || !amount || !fan_name || !fan_cpf) {
@@ -186,6 +186,7 @@ Deno.serve(async (req) => {
         creator_id,
         plan: plan_name,
         amount: amountFloat,
+        affiliate_ref: affiliate_ref || null,
       }, { onConflict: "syncpay_id" });
 
     if (pendingErr) {

@@ -192,6 +192,7 @@ export type Database = {
       }
       pending_payments: {
         Row: {
+          affiliate_ref: string | null
           amount: number
           created_at: string
           creator_id: string
@@ -201,6 +202,7 @@ export type Database = {
           syncpay_id: string
         }
         Insert: {
+          affiliate_ref?: string | null
           amount: number
           created_at?: string
           creator_id: string
@@ -210,6 +212,7 @@ export type Database = {
           syncpay_id: string
         }
         Update: {
+          affiliate_ref?: string | null
           amount?: number
           created_at?: string
           creator_id?: string

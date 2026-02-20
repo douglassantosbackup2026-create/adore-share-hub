@@ -267,7 +267,7 @@ const CreatorProfile = () => {
         >
           <ChevronLeft className="h-4 w-4" /> Voltar
         </Link>
-        <div className="flex gap-2">
+        <div className="absolute top-6 right-6 flex gap-2">
           <button className="flex h-9 w-9 items-center justify-center rounded-full bg-background/60 backdrop-blur-sm border border-border/50 text-foreground hover:bg-background/80 transition-colors">
             <Share2 className="h-4 w-4" />
           </button>

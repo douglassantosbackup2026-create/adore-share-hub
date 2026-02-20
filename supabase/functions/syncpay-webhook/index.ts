@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
     // Look up pending payment to get fan_id, creator_id, plan
     const { data: pending, error: pendingErr } = await supabase
       .from("pending_payments")
-      .select("fan_id, creator_id, plan, amount")
+      .select("fan_id, creator_id, plan, amount, affiliate_ref")
       .eq("syncpay_id", identifier)
       .maybeSingle();
 
@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { fan_id: fanId, creator_id: creatorId, plan, amount } = pending;
+    const { fan_id: fanId, creator_id: creatorId, plan, amount, affiliate_ref: affiliateRef } = pending;
 
     // Deactivate any previous subscription for this fan+creator
     await supabase
@@ -107,11 +107,56 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Get the inserted subscription ID for affiliate tracking
+    const { data: newSub } = await supabase
+      .from("subscriptions")
+      .select("id")
+      .eq("syncpay_id", identifier)
+      .maybeSingle();
+
     // Clean up pending payment record
     await supabase
       .from("pending_payments")
       .delete()
       .eq("syncpay_id", identifier);
+
+    // Register affiliate referral if applicable
+    if (affiliateRef && newSub) {
+      try {
+        // Find the affiliate link by code
+        const { data: affLink } = await supabase
+          .from("affiliate_links")
+          .select("id, affiliate_id")
+          .eq("code", affiliateRef)
+          .maybeSingle();
+
+        if (affLink) {
+          // Get current affiliate fee rate
+          const { data: setting } = await supabase
+            .from("platform_settings")
+            .select("value")
+            .eq("key", "affiliate_fee_rate")
+            .maybeSingle();
+
+          const commissionRate = setting ? parseFloat(setting.value) : 0.05;
+          const commissionAmount = amount * commissionRate;
+
+          await supabase
+            .from("affiliate_referrals")
+            .insert({
+              affiliate_link_id: affLink.id,
+              subscription_id: newSub.id,
+              commission_rate: commissionRate,
+              commission_amount: commissionAmount,
+              status: "pending",
+            });
+
+          console.log(`Affiliate referral created: link=${affLink.id} commission=${commissionAmount}`);
+        }
+      } catch (affErr) {
+        console.error("Affiliate referral error (non-fatal):", affErr);
+      }
+    }
 
     // Fire Meta Purchase event (non-fatal) — platform + creator pixel
     try {
