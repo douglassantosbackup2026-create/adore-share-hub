@@ -1,65 +1,56 @@
 
 
-## Aprovacao de Afiliados pelo Admin
+## Corrigir redirecionamento para onboarding apos login
 
-Atualmente, qualquer usuario logado pode gerar links de afiliado livremente. Com esta mudanca, o admin precisara aprovar cada afiliado antes que seus links funcionem.
+### Problema
 
----
+No `AuthContext.tsx`, quando o usuario faz login:
+1. `setUser(session.user)` e chamado
+2. `fetchProfile(session.user.id)` e chamado (async, nao aguardado)
+3. `setLoading(false)` e chamado imediatamente
 
-### Como vai funcionar
+Como `fetchProfile` ainda nao terminou, `profile` continua `null`. O `Login.tsx` ve `user` definido + `profile === null` + `loading === false` e redireciona para `/onboarding`.
 
-1. Quando um usuario clica em "Compartilhar como afiliado" no perfil de um criador, uma **solicitacao de afiliado** e criada com status pendente.
-2. O admin ve as solicitacoes pendentes na aba "Afiliados" do painel e pode aprovar ou rejeitar.
-3. Somente apos aprovacao o usuario pode gerar links de afiliado e receber comissoes.
-4. Usuarios pendentes ou nao-aprovados veem uma mensagem informando que precisam aguardar aprovacao.
+### Solucao
 
----
+Alterar o `AuthContext.tsx` para que `loading` so se torne `false` **depois** que o perfil for carregado:
+
+1. No handler `onAuthStateChange`: mover `setLoading(false)` para **dentro** de `fetchProfile` (apos o perfil ser definido), ou aguardar o `fetchProfile` antes de setar loading.
+
+2. No `getSession().then(...)`: aguardar `fetchProfile` com `await` antes de chamar `setLoading(false)`.
+
+3. Remover o `setTimeout` do `fetchProfile` no `onAuthStateChange` -- ele causa uma race condition onde o loading termina antes do perfil carregar.
 
 ### Detalhes tecnicos
 
-**Migracao SQL:**
-- Adicionar coluna `approved` (boolean, default `false`) na tabela `affiliate_links`. Essa coluna sera usada de forma diferente: vamos criar uma nova tabela `affiliate_requests` para controlar quem pode ser afiliado.
+**Arquivo: `src/contexts/AuthContext.tsx`**
 
-Na verdade, a abordagem mais limpa:
+Mudancas no `useEffect`:
 
-**Nova tabela `affiliate_requests`:**
+```text
+// onAuthStateChange handler:
+// ANTES:
+setTimeout(() => fetchProfile(session.user.id), 0);
+setLoading(false);
 
-| Coluna | Tipo | Default |
-|---|---|---|
-| id | uuid | gen_random_uuid() |
-| user_id | uuid (unique) | -- |
-| status | text | 'pending' |
-| created_at | timestamptz | now() |
-| reviewed_at | timestamptz | null |
+// DEPOIS:
+fetchProfile(session.user.id).then(() => setLoading(false));
+// Remover o setLoading(false) solto
 
-- `status` pode ser `pending`, `approved` ou `rejected`
-- RLS: usuarios podem ver/criar seus proprios pedidos; admins podem ver e atualizar todos
+// getSession handler:
+// ANTES:
+fetchProfile(session.user.id);  // nao aguardado
+setLoading(false);
 
-**Fluxo atualizado:**
+// DEPOIS:
+await fetchProfile(session.user.id);
+setLoading(false);
+```
 
-1. No `CreatorProfile.tsx`, ao clicar em "Afiliado":
-   - Verificar se o usuario ja tem um `affiliate_request`
-   - Se nao tem: criar com status `pending` e mostrar mensagem "Sua solicitacao foi enviada"
-   - Se tem e esta `pending`: mostrar "Aguardando aprovacao"
-   - Se tem e esta `approved`: gerar o link normalmente (comportamento atual)
-   - Se tem e esta `rejected`: mostrar "Sua solicitacao foi negada"
+Tambem garantir que quando nao ha sessao, `setLoading(false)` continue sendo chamado normalmente.
 
-2. No `Admin.tsx` (aba Afiliados):
-   - Nova secao "Solicitacoes Pendentes" mostrando nome do usuario e data
-   - Botoes "Aprovar" e "Rejeitar" para cada solicitacao
-
-3. No webhook (`syncpay-webhook`): ao registrar referral, verificar se o afiliado esta aprovado antes de criar o registro de comissao.
-
----
-
-### Resumo dos arquivos alterados
+### Arquivos alterados
 
 | Arquivo | Alteracao |
 |---|---|
-| Migracao SQL | Criar tabela `affiliate_requests` com RLS |
-| `src/hooks/useAffiliateLinks.ts` | Verificar aprovacao antes de permitir criar links |
-| `src/hooks/useAffiliateStats.ts` | Novo hook `useAffiliateRequests` para admin listar/aprovar/rejeitar |
-| `src/pages/Admin.tsx` | Secao de solicitacoes pendentes na aba Afiliados |
-| `src/pages/CreatorProfile.tsx` | Verificar status do afiliado antes de gerar link |
-| `supabase/functions/syncpay-webhook/index.ts` | Verificar se afiliado esta aprovado antes de registrar comissao |
-
+| `src/contexts/AuthContext.tsx` | Aguardar fetchProfile antes de setar loading = false |
