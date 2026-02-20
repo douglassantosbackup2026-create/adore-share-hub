@@ -14,7 +14,7 @@ export function useMyAffiliateRequest() {
         .eq("user_id", user!.id)
         .maybeSingle();
       if (error) throw error;
-      return data as { id: string; user_id: string; status: string; created_at: string; reviewed_at: string | null } | null;
+      return (data as unknown) as { id: string; user_id: string; status: string; created_at: string; reviewed_at: string | null } | null;
     },
   });
 }
