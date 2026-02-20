@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { useAffiliateLinks } from "@/hooks/useAffiliateLinks";
 import { useMyAffiliateRequest, useCreateAffiliateRequest } from "@/hooks/useAffiliateRequests";
+import { useCreatorPixel } from "@/hooks/useCreatorPixel";
 
 
 const defaultPlans = [
