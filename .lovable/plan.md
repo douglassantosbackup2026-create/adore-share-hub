@@ -1,54 +1,41 @@
 
 
-## Pixel do criador aparecendo no Meta Pixel Helper
+## Corrigir pixel do criador no Meta Pixel Helper
 
-### Problema
+### Problema identificado
 
-O Meta Pixel Helper so detecta pixels inicializados no **navegador** (client-side) via `fbq('init', ...)`. Atualmente, apenas o pixel da plataforma (`1688353905856977`) esta no `index.html`. O pixel do criador so e disparado via CAPI (server-side), que o Pixel Helper nao consegue ver.
+O hook `useCreatorPixel` esta implementado corretamente, mas ha dois problemas potenciais:
+
+1. **O hook so roda na pagina de perfil do criador** (`/creator/:id`). Se voce esta testando na pagina inicial (`/`), o pixel do criador nao sera inicializado.
+
+2. **O `fbq('track', 'PageView')` generico pode nao estar associando corretamente ao pixel do criador**. O Meta Pixel Helper pode nao reconhecer o segundo pixel se ele for inicializado depois do carregamento da pagina sem um disparo especifico via `trackSingle`.
 
 ### Solucao
 
-Adicionar inicializacao client-side do pixel do criador quando um fa visita o perfil. Isso fara o Pixel Helper mostrar os 2 pixels.
+Atualizar o hook `useCreatorPixel` para:
+
+- Usar `fbq('trackSingle', pixelId, 'PageView')` em vez de `fbq('track', 'PageView')` -- isso garante que o PageView seja disparado especificamente para o pixel do criador, forcando o Pixel Helper a reconhece-lo.
+- Adicionar um `console.log` temporario para depuracao, confirmando que o pixel esta sendo inicializado.
 
 ### Mudancas
 
-**1. Criar `src/hooks/useCreatorPixel.ts`**
-- Hook que recebe o `pixel_id` do criador
-- Usa `useEffect` para chamar `fbq('init', pixelId)` e `fbq('track', 'PageView')` quando o pixel_id estiver disponivel
-- Limpa o pixel do criador ao sair da pagina (para nao acumular pixels de criadores diferentes)
+**1. `src/hooks/useCreatorPixel.ts`**
 
-**2. Atualizar `src/pages/CreatorProfile.tsx`**
-- Importar e chamar `useCreatorPixel(creatorPixelId)` passando o pixel_id extraido do `social_links`
-- Isso garante que ao visitar o perfil, o pixel do criador e inicializado no browser
-
-### Detalhes tecnicos
-
-O `fbq` ja esta carregado globalmente pelo script no `index.html`. O hook vai:
+Atualizar o hook para usar `trackSingle`:
 
 ```typescript
-// src/hooks/useCreatorPixel.ts
-import { useEffect } from "react";
-
-declare global {
-  interface Window {
-    fbq?: (...args: unknown[]) => void;
-  }
-}
-
 export function useCreatorPixel(pixelId: string | undefined) {
   useEffect(() => {
     if (!pixelId || !window.fbq) return;
     window.fbq("init", pixelId);
-    window.fbq("track", "PageView");
+    window.fbq("trackSingle", pixelId, "PageView");
   }, [pixelId]);
 }
 ```
 
-E no `CreatorProfile.tsx`, adicionar apos extrair o `creatorPixelId`:
+### Como testar
 
-```typescript
-useCreatorPixel(creatorPixelId);
-```
-
-Isso fara com que o Meta Pixel Helper detecte ambos os pixels (plataforma + criador) quando alguem visitar um perfil de criador.
+1. Acesse o perfil de um criador que tenha o pixel configurado (ex: Ana Julia - Bahia)
+2. O Meta Pixel Helper deve mostrar 2 pixels: o da plataforma (1688353905856977) e o do criador (4384406811885630)
+3. Ambos devem mostrar o evento PageView
 
