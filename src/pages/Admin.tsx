@@ -669,7 +669,9 @@ function FinancialTab() {
                 <TableHead>Criador</TableHead>
                 <TableHead>Categoria</TableHead>
                 <TableHead>Assinantes</TableHead>
-                <TableHead>Receita Est.</TableHead>
+                <TableHead>Receita Bruta</TableHead>
+                <TableHead>Comissão (20%)</TableHead>
+                <TableHead>Repasse (80%)</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
