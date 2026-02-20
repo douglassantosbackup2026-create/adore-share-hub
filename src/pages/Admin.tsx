@@ -31,6 +31,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useMonthlyRevenue } from "@/hooks/useMonthlyRevenue";
 import { useAffiliateFeeRate, useUpdateAffiliateFee, useAffiliateOverview } from "@/hooks/useAffiliateStats";
+import { useAdminAffiliateRequests, useUpdateAffiliateRequest } from "@/hooks/useAffiliateRequests";
 
 type Section = "overview" | "users" | "creators" | "posts" | "financial" | "affiliates";
 
