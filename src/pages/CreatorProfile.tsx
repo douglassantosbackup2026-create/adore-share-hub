@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { useAffiliateLinks } from "@/hooks/useAffiliateLinks";
 import { useMyAffiliateRequest, useCreateAffiliateRequest } from "@/hooks/useAffiliateRequests";
+import { useCreatorPixel } from "@/hooks/useCreatorPixel";
 
 
 const defaultPlans = [
@@ -190,6 +191,8 @@ const CreatorProfile = () => {
   const creatorSocial = (realProfile?.social_links as any) ?? {};
   const creatorPixelId = creatorSocial.meta_pixel_id || undefined;
   const creatorAccessToken = creatorSocial.meta_access_token || undefined;
+
+  useCreatorPixel(creatorPixelId);
 
   // Fire ViewContent when profile is loaded
   useEffect(() => {
