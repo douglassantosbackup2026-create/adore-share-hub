@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Camera, Save, Eye, EyeOff, Shield, CreditCard, Banknote, Instagram, Twitter, Youtube, DollarSign } from "lucide-react";
+import { Camera, Save, Eye, EyeOff, Shield, CreditCard, Banknote, Instagram, Twitter, Youtube, DollarSign, Zap } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,8 @@ const Settings = () => {
     instagram: "",
     twitter: "",
     youtube: "",
+    meta_pixel_id: "",
+    meta_access_token: "",
   });
 
   const [plans, setPlans] = useState({
@@ -54,6 +56,8 @@ const Settings = () => {
         instagram: social.instagram || "",
         twitter: social.twitter || "",
         youtube: social.youtube || "",
+        meta_pixel_id: social.meta_pixel_id || "",
+        meta_access_token: social.meta_access_token || "",
       });
     }
   }, [authProfile]);
@@ -92,6 +96,8 @@ const Settings = () => {
           instagram: profileForm.instagram,
           twitter: profileForm.twitter,
           youtube: profileForm.youtube,
+          meta_pixel_id: profileForm.meta_pixel_id,
+          meta_access_token: profileForm.meta_access_token,
         },
       });
 
@@ -285,6 +291,46 @@ const Settings = () => {
                   </div>
                 ))}
               </div>
+
+              {/* Meta Pixel section — only for creators */}
+              {authProfile?.role === "creator" && (
+                <div className="flex flex-col gap-3">
+                  <Label className="flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-primary" />
+                    Pixel do Meta (CAPI)
+                  </Label>
+                  <p className="text-xs text-muted-foreground -mt-1">
+                    Configure seu próprio Pixel do Meta para rastrear eventos de assinatura no seu painel de anúncios.
+                  </p>
+                  <div className="flex flex-col gap-3">
+                    <Input
+                      className="bg-muted/20 border-border/50"
+                      placeholder="Pixel ID — Ex: 1234567890"
+                      value={profileForm.meta_pixel_id}
+                      onChange={(e) => setProfileForm((p) => ({ ...p, meta_pixel_id: e.target.value }))}
+                    />
+                    <Input
+                      className="bg-muted/20 border-border/50"
+                      placeholder="Token de acesso (CAPI) — Ex: EAABs..."
+                      type="password"
+                      value={profileForm.meta_access_token}
+                      onChange={(e) => setProfileForm((p) => ({ ...p, meta_access_token: e.target.value }))}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Encontre essas informações no{" "}
+                      <a
+                        href="https://business.facebook.com/events_manager"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary underline"
+                      >
+                        Gerenciador de Eventos do Meta
+                      </a>
+                      .
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <Button
                 onClick={handleSaveProfile}

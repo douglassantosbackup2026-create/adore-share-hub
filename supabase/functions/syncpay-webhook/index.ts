@@ -113,8 +113,17 @@ Deno.serve(async (req) => {
       .delete()
       .eq("syncpay_id", identifier);
 
-    // Fire Meta Purchase event (non-fatal)
+    // Fire Meta Purchase event (non-fatal) — platform + creator pixel
     try {
+      // Fetch creator profile to get their pixel info
+      const { data: creatorProfile } = await supabase
+        .from("profiles")
+        .select("social_links")
+        .eq("id", creatorId)
+        .maybeSingle();
+
+      const socialLinks = (creatorProfile?.social_links as Record<string, string> | null) ?? {};
+
       const projectId = Deno.env.get("SUPABASE_URL")!
         .split(".")[0]
         .split("//")[1];
@@ -127,6 +136,8 @@ Deno.serve(async (req) => {
             event_name: "Purchase",
             value: amount,
             currency: "BRL",
+            creator_pixel_id: socialLinks.meta_pixel_id || undefined,
+            creator_access_token: socialLinks.meta_access_token || undefined,
           }),
         }
       );

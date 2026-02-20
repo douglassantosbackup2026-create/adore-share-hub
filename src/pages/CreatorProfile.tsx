@@ -124,10 +124,15 @@ const CreatorProfile = () => {
     setEditPlan(post.min_plan);
   };
 
+  // Extract creator pixel info from profile
+  const creatorSocial = (realProfile?.social_links as any) ?? {};
+  const creatorPixelId = creatorSocial.meta_pixel_id || undefined;
+  const creatorAccessToken = creatorSocial.meta_access_token || undefined;
+
   // Fire ViewContent when profile is loaded
   useEffect(() => {
     if (realProfile) {
-      sendMetaEvent({ event_name: "ViewContent" });
+      sendMetaEvent({ event_name: "ViewContent", creator_pixel_id: creatorPixelId, creator_access_token: creatorAccessToken });
     }
   }, [realProfile?.id]);
 
@@ -206,6 +211,8 @@ const CreatorProfile = () => {
       user_email: user.email,
       value: plans[selectedPlan].price,
       currency: "BRL",
+      creator_pixel_id: creatorPixelId,
+      creator_access_token: creatorAccessToken,
     });
     setPixModalOpen(true);
   };
@@ -557,6 +564,8 @@ const CreatorProfile = () => {
           amount={plans[selectedPlan].price}
           fanId={user.id}
           fanEmail={user.email ?? ""}
+          creatorPixelId={creatorPixelId}
+          creatorAccessToken={creatorAccessToken}
         />
       )}
 

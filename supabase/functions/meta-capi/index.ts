@@ -13,6 +13,21 @@ function hashEmail(email: string): string {
   return createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
 }
 
+async function sendToPixel(
+  pixelId: string,
+  accessToken: string,
+  eventData: Record<string, unknown>,
+): Promise<{ ok: boolean; result: unknown }> {
+  const url = `https://graph.facebook.com/${API_VERSION}/${pixelId}/events?access_token=${accessToken}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data: [eventData] }),
+  });
+  const result = await response.json();
+  return { ok: response.ok, result };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -27,7 +42,17 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { event_name, user_email, value, currency, event_source_url, client_user_agent, client_ip_address } = await req.json();
+    const {
+      event_name,
+      user_email,
+      value,
+      currency,
+      event_source_url,
+      client_user_agent,
+      client_ip_address,
+      creator_pixel_id,
+      creator_access_token,
+    } = await req.json();
 
     if (!event_name) {
       return new Response(JSON.stringify({ error: "event_name is required" }), {
@@ -36,15 +61,13 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Build user_data — Facebook requires at least client_ip_address + client_user_agent
-    // when no hashed identifiers (email/phone) are present
+    // Build user_data
     const userData: Record<string, string> = {};
 
     if (user_email) {
       userData.em = hashEmail(user_email);
     }
 
-    // Use caller-supplied IP/UA or fall back to request headers
     const ip = client_ip_address ||
       req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
       req.headers.get("x-real-ip") || "";
@@ -72,18 +95,25 @@ Deno.serve(async (req) => {
       };
     }
 
-    const url = `https://graph.facebook.com/${API_VERSION}/${PIXEL_ID}/events?access_token=${META_CAPI_TOKEN}`;
+    // 1. Fire to platform pixel
+    const platformResult = await sendToPixel(PIXEL_ID, META_CAPI_TOKEN, eventData);
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ data: [eventData] }),
-    });
+    // 2. Fire to creator pixel (if provided)
+    let creatorResult: unknown = null;
+    if (creator_pixel_id && creator_access_token) {
+      try {
+        // Use a new event_id for the creator pixel to avoid dedup issues
+        const creatorEventData = { ...eventData, event_id: crypto.randomUUID() };
+        const cr = await sendToPixel(creator_pixel_id, creator_access_token, creatorEventData);
+        creatorResult = cr.result;
+      } catch (creatorErr) {
+        console.error("Creator pixel error (non-fatal):", creatorErr);
+        creatorResult = { error: String(creatorErr) };
+      }
+    }
 
-    const result = await response.json();
-
-    return new Response(JSON.stringify(result), {
-      status: response.ok ? 200 : 502,
+    return new Response(JSON.stringify({ platform: platformResult.result, creator: creatorResult }), {
+      status: platformResult.ok ? 200 : 502,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

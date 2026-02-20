@@ -23,6 +23,8 @@ interface PixPaymentModalProps {
   amount: number;
   fanId: string;
   fanEmail: string;
+  creatorPixelId?: string;
+  creatorAccessToken?: string;
 }
 
 type Step = "form" | "pix" | "success";
@@ -45,6 +47,8 @@ export function PixPaymentModal({
   amount,
   fanId,
   fanEmail,
+  creatorPixelId,
+  creatorAccessToken,
 }: PixPaymentModalProps) {
   const [step, setStep] = useState<Step>("form");
   const [fanName, setFanName] = useState("");
@@ -100,6 +104,8 @@ export function PixPaymentModal({
           user_email: fanEmail,
           value: amount,
           currency: "BRL",
+          creator_pixel_id: creatorPixelId,
+          creator_access_token: creatorAccessToken,
         });
         setTimeout(() => {
           onSuccess();

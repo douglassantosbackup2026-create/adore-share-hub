@@ -5,6 +5,8 @@ interface MetaCapiEvent {
   user_email?: string;
   value?: number;
   currency?: string;
+  creator_pixel_id?: string;
+  creator_access_token?: string;
 }
 
 export async function sendMetaEvent(event: MetaCapiEvent): Promise<void> {
