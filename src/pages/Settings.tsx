@@ -29,6 +29,8 @@ const Settings = () => {
     instagram: "",
     twitter: "",
     youtube: "",
+    meta_pixel_id: "",
+    meta_access_token: "",
   });
 
   const [plans, setPlans] = useState({
