@@ -130,7 +130,17 @@ Deno.serve(async (req) => {
           .eq("code", affiliateRef)
           .maybeSingle();
 
-        if (affLink) {
+      if (affLink) {
+          // Check if affiliate is approved
+          const { data: affRequest } = await supabase
+            .from("affiliate_requests")
+            .select("status")
+            .eq("user_id", affLink.affiliate_id)
+            .maybeSingle();
+
+          if (!affRequest || affRequest.status !== "approved") {
+            console.log(`Affiliate ${affLink.affiliate_id} not approved, skipping commission`);
+          } else {
           // Get current affiliate fee rate
           const { data: setting } = await supabase
             .from("platform_settings")
@@ -152,6 +162,7 @@ Deno.serve(async (req) => {
             });
 
           console.log(`Affiliate referral created: link=${affLink.id} commission=${commissionAmount}`);
+          } // end approved check
         }
       } catch (affErr) {
         console.error("Affiliate referral error (non-fatal):", affErr);

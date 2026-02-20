@@ -31,6 +31,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useMonthlyRevenue } from "@/hooks/useMonthlyRevenue";
 import { useAffiliateFeeRate, useUpdateAffiliateFee, useAffiliateOverview } from "@/hooks/useAffiliateStats";
+import { useAdminAffiliateRequests, useUpdateAffiliateRequest } from "@/hooks/useAffiliateRequests";
 
 type Section = "overview" | "users" | "creators" | "posts" | "financial" | "affiliates";
 
@@ -762,8 +763,21 @@ function AffiliatesTab() {
   const { data: feeRate, isLoading: feeLoading } = useAffiliateFeeRate();
   const updateFee = useUpdateAffiliateFee();
   const { data: overview, isLoading: overviewLoading } = useAffiliateOverview();
+  const { data: affiliateRequests, isLoading: reqLoading } = useAdminAffiliateRequests();
+  const updateRequest = useUpdateAffiliateRequest();
   const [localRate, setLocalRate] = useState("");
   const { toast } = useToast();
+
+  const pendingRequests = (affiliateRequests ?? []).filter((r: any) => r.status === "pending");
+
+  const handleRequestAction = async (id: string, status: "approved" | "rejected", name: string) => {
+    try {
+      await updateRequest.mutateAsync({ id, status });
+      toast({ title: `${name} foi ${status === "approved" ? "aprovado" : "rejeitado"}.` });
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    }
+  };
 
   useEffect(() => {
     if (feeRate !== undefined && !localRate) setLocalRate((feeRate * 100).toFixed(0));
@@ -786,6 +800,79 @@ function AffiliatesTab() {
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">Programa de Afiliados</h2>
+
+      {/* Pending affiliate requests */}
+      {(reqLoading || pendingRequests.length > 0) && (
+        <Card className="border-border bg-muted/30">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-primary" />
+              <CardTitle className="text-base">Solicitações Pendentes</CardTitle>
+              {!reqLoading && <Badge variant="secondary">{pendingRequests.length}</Badge>}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Usuário</TableHead>
+                  <TableHead>Data</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {reqLoading ? (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <TableRow key={i}>
+                      {Array.from({ length: 3 }).map((_, j) => (
+                        <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : (
+                  pendingRequests.map((r: any) => (
+                    <TableRow key={r.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={r.userAvatar || undefined} />
+                            <AvatarFallback>{r.userName[0]}</AvatarFallback>
+                          </Avatar>
+                          <span className="font-medium">{r.userName}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {new Date(r.created_at).toLocaleDateString("pt-BR")}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleRequestAction(r.id, "approved", r.userName)}
+                            disabled={updateRequest.isPending}
+                            className="gap-1"
+                          >
+                            <CheckCircle className="h-4 w-4" /> Aprovar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleRequestAction(r.id, "rejected", r.userName)}
+                            disabled={updateRequest.isPending}
+                            className="gap-1 text-destructive hover:text-destructive"
+                          >
+                            Rejeitar
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Fee config card */}
       <Card>
