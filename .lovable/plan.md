@@ -1,84 +1,54 @@
 
 
-## Sistema de Afiliados
+## Aprovacao de Afiliados pelo Admin
 
-Criar um programa de afiliados onde qualquer usuario pode compartilhar um link de referencia para um criador. Quando alguem assina atraves desse link, o afiliado recebe uma comissao definida pelo admin.
+Atualmente, qualquer usuario logado pode gerar links de afiliado livremente. Com esta mudanca, o admin precisara aprovar cada afiliado antes que seus links funcionem.
 
 ---
 
-### Banco de dados (novas tabelas)
+### Como vai funcionar
 
-**1. `platform_settings`** -- configuracoes globais da plataforma
+1. Quando um usuario clica em "Compartilhar como afiliado" no perfil de um criador, uma **solicitacao de afiliado** e criada com status pendente.
+2. O admin ve as solicitacoes pendentes na aba "Afiliados" do painel e pode aprovar ou rejeitar.
+3. Somente apos aprovacao o usuario pode gerar links de afiliado e receber comissoes.
+4. Usuarios pendentes ou nao-aprovados veem uma mensagem informando que precisam aguardar aprovacao.
 
-| Coluna | Tipo | Default |
-|---|---|---|
-| id | uuid | gen_random_uuid() |
-| key | text (unique) | -- |
-| value | text | -- |
-| updated_at | timestamptz | now() |
+---
 
-Armazenara `affiliate_fee_rate` com valor inicial `"0.05"` (5%). O admin altera esse valor pelo painel. RLS: leitura publica, escrita apenas para admins.
+### Detalhes tecnicos
 
-**2. `affiliate_links`** -- links de referencia
+**Migracao SQL:**
+- Adicionar coluna `approved` (boolean, default `false`) na tabela `affiliate_links`. Essa coluna sera usada de forma diferente: vamos criar uma nova tabela `affiliate_requests` para controlar quem pode ser afiliado.
 
-| Coluna | Tipo | Default |
-|---|---|---|
-| id | uuid | gen_random_uuid() |
-| affiliate_id | uuid | -- (quem compartilha) |
-| creator_id | uuid | -- (criador sendo promovido) |
-| code | text (unique) | -- (codigo curto, ex: "abc123") |
-| created_at | timestamptz | now() |
+Na verdade, a abordagem mais limpa:
 
-RLS: usuarios autenticados podem criar/ver seus proprios links.
-
-**3. `affiliate_referrals`** -- registro de conversoes
+**Nova tabela `affiliate_requests`:**
 
 | Coluna | Tipo | Default |
 |---|---|---|
 | id | uuid | gen_random_uuid() |
-| affiliate_link_id | uuid | FK -> affiliate_links |
-| subscription_id | uuid | FK -> subscriptions |
-| commission_rate | numeric | -- (taxa no momento da conversao) |
-| commission_amount | numeric | -- (valor calculado) |
+| user_id | uuid (unique) | -- |
 | status | text | 'pending' |
 | created_at | timestamptz | now() |
+| reviewed_at | timestamptz | null |
 
-RLS: afiliados podem ver seus proprios referrals.
+- `status` pode ser `pending`, `approved` ou `rejected`
+- RLS: usuarios podem ver/criar seus proprios pedidos; admins podem ver e atualizar todos
 
----
+**Fluxo atualizado:**
 
-### Painel Admin -- nova secao "Afiliados"
+1. No `CreatorProfile.tsx`, ao clicar em "Afiliado":
+   - Verificar se o usuario ja tem um `affiliate_request`
+   - Se nao tem: criar com status `pending` e mostrar mensagem "Sua solicitacao foi enviada"
+   - Se tem e esta `pending`: mostrar "Aguardando aprovacao"
+   - Se tem e esta `approved`: gerar o link normalmente (comportamento atual)
+   - Se tem e esta `rejected`: mostrar "Sua solicitacao foi negada"
 
-Adicionar uma nova secao na sidebar do Admin com:
+2. No `Admin.tsx` (aba Afiliados):
+   - Nova secao "Solicitacoes Pendentes" mostrando nome do usuario e data
+   - Botoes "Aprovar" e "Rejeitar" para cada solicitacao
 
-1. **Card de configuracao**: slider ou input para definir a porcentagem do afiliado (0% a 50%). Salva em `platform_settings` com key `affiliate_fee_rate`.
-
-2. **Tabela de afiliados ativos**: lista de usuarios com links de afiliado, mostrando:
-   - Nome do afiliado
-   - Quantidade de links gerados
-   - Total de conversoes
-   - Comissao total acumulada
-
-3. **Tabela de conversoes recentes**: ultimas assinaturas feitas via link de afiliado.
-
----
-
-### Fluxo do afiliado
-
-1. Na pagina do criador (`CreatorProfile.tsx`), adicionar um botao "Compartilhar como afiliado" que gera um link unico (ex: `?ref=abc123`).
-2. Quando um fan acessa o link, o codigo `ref` e salvo em sessionStorage.
-3. No momento da assinatura (checkout Pix), o sistema verifica se ha um codigo de referencia e registra o `affiliate_referral` com a comissao calculada.
-
----
-
-### Distribuicao da receita (exemplo com afiliado a 5%)
-
-De uma assinatura de R$ 100:
-- Plataforma: 20% = R$ 20
-- Afiliado: 5% = R$ 5 (deduzido da parte da plataforma)
-- Criador: 80% = R$ 80 (nao muda)
-
-A comissao do afiliado sai da parte da plataforma, ou seja, a plataforma fica com 15% e o afiliado com 5%. O criador sempre recebe 80%.
+3. No webhook (`syncpay-webhook`): ao registrar referral, verificar se o afiliado esta aprovado antes de criar o registro de comissao.
 
 ---
 
@@ -86,13 +56,10 @@ A comissao do afiliado sai da parte da plataforma, ou seja, a plataforma fica co
 
 | Arquivo | Alteracao |
 |---|---|
-| Migracao SQL | Criar tabelas `platform_settings`, `affiliate_links`, `affiliate_referrals` com RLS |
-| `src/pages/Admin.tsx` | Nova secao "Afiliados" com config de taxa e tabelas |
-| `src/lib/constants.ts` | Exportar key `AFFILIATE_FEE_KEY` |
-| `src/pages/CreatorProfile.tsx` | Botao "Compartilhar como afiliado" + captura de `?ref=` |
-| `src/components/PixPaymentModal.tsx` | Verificar ref no sessionStorage e registrar referral |
-| `supabase/functions/syncpay-webhook/index.ts` | Ao confirmar pagamento, criar registro em `affiliate_referrals` |
-| `src/hooks/useAffiliateLinks.ts` (novo) | Hook para CRUD de links de afiliado |
-| `src/hooks/useAffiliateStats.ts` (novo) | Hook para admin ver estatisticas de afiliados |
-| `src/pages/Settings.tsx` | Nova aba ou secao "Afiliados" para o criador/usuario ver seus links e ganhos |
+| Migracao SQL | Criar tabela `affiliate_requests` com RLS |
+| `src/hooks/useAffiliateLinks.ts` | Verificar aprovacao antes de permitir criar links |
+| `src/hooks/useAffiliateStats.ts` | Novo hook `useAffiliateRequests` para admin listar/aprovar/rejeitar |
+| `src/pages/Admin.tsx` | Secao de solicitacoes pendentes na aba Afiliados |
+| `src/pages/CreatorProfile.tsx` | Verificar status do afiliado antes de gerar link |
+| `supabase/functions/syncpay-webhook/index.ts` | Verificar se afiliado esta aprovado antes de registrar comissao |
 
