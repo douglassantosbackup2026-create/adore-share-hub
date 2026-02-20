@@ -23,6 +23,8 @@ interface PixPaymentModalProps {
   amount: number;
   fanId: string;
   fanEmail: string;
+  creatorPixelId?: string;
+  creatorAccessToken?: string;
 }
 
 type Step = "form" | "pix" | "success";
