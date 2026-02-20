@@ -192,6 +192,8 @@ const CreatorProfile = () => {
   const creatorPixelId = creatorSocial.meta_pixel_id || undefined;
   const creatorAccessToken = creatorSocial.meta_access_token || undefined;
 
+  useCreatorPixel(creatorPixelId);
+
   // Fire ViewContent when profile is loaded
   useEffect(() => {
     if (realProfile) {
