@@ -1,6 +1,6 @@
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { Heart, Star, Lock, MessageCircle, Share2, ChevronLeft, Check, Zap, Users, UserPlus, UserCheck, Settings, Pencil, Trash2, FileText } from "lucide-react";
+import { Heart, Star, Lock, MessageCircle, Share2, ChevronLeft, Check, Zap, Users, UserPlus, UserCheck, Settings, Pencil, Trash2, FileText, Link2 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { useCreatorProfile } from "@/hooks/useCreatorProfile";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -16,6 +16,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { useAffiliateLinks } from "@/hooks/useAffiliateLinks";
 
 
 const defaultPlans = [
