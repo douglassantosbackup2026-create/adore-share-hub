@@ -694,8 +694,14 @@ function FinancialTab() {
                       </TableCell>
                       <TableCell>{c.creator_category ?? "—"}</TableCell>
                       <TableCell>{c.active_subs}</TableCell>
-                      <TableCell className="font-semibold text-primary">
+                      <TableCell className="font-semibold">
                         R$ {c.estimated_revenue.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-primary">
+                        R$ {(c.estimated_revenue * PLATFORM_FEE_RATE).toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-green-500 font-semibold">
+                        R$ {(c.estimated_revenue * (1 - PLATFORM_FEE_RATE)).toFixed(2)}
                       </TableCell>
                     </TableRow>
                   ))}

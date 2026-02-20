@@ -199,7 +199,7 @@ const Dashboard = () => {
           <div className="lg:col-span-2 glass-card rounded-2xl p-6">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="font-semibold text-foreground">Receita Mensal</h2>
+                <h2 className="font-semibold text-foreground">Receita Líquida</h2>
                 <p className="text-sm text-muted-foreground">Últimos 6 meses</p>
               </div>
               <div className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5">

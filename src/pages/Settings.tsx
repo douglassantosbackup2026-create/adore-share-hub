@@ -336,6 +336,15 @@ const Settings = () => {
           {/* PAGAMENTOS */}
           <TabsContent value="payments">
             <div className="flex flex-col gap-4">
+              <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 flex items-start gap-3">
+                <DollarSign className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Taxa da plataforma</p>
+                  <p className="text-sm text-muted-foreground">
+                    A plataforma retém 20% de cada assinatura como taxa de serviço. Você recebe 80% do valor dos seus planos.
+                  </p>
+                </div>
+              </div>
               <div className="glass-card rounded-2xl p-6 flex flex-col gap-4">
                 <div className="flex items-center gap-2">
                   <Banknote className="h-5 w-5 text-primary" />
