@@ -292,6 +292,46 @@ const Settings = () => {
                 ))}
               </div>
 
+              {/* Meta Pixel section — only for creators */}
+              {authProfile?.role === "creator" && (
+                <div className="flex flex-col gap-3">
+                  <Label className="flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-primary" />
+                    Pixel do Meta (CAPI)
+                  </Label>
+                  <p className="text-xs text-muted-foreground -mt-1">
+                    Configure seu próprio Pixel do Meta para rastrear eventos de assinatura no seu painel de anúncios.
+                  </p>
+                  <div className="flex flex-col gap-3">
+                    <Input
+                      className="bg-muted/20 border-border/50"
+                      placeholder="Pixel ID — Ex: 1234567890"
+                      value={profileForm.meta_pixel_id}
+                      onChange={(e) => setProfileForm((p) => ({ ...p, meta_pixel_id: e.target.value }))}
+                    />
+                    <Input
+                      className="bg-muted/20 border-border/50"
+                      placeholder="Token de acesso (CAPI) — Ex: EAABs..."
+                      type="password"
+                      value={profileForm.meta_access_token}
+                      onChange={(e) => setProfileForm((p) => ({ ...p, meta_access_token: e.target.value }))}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Encontre essas informações no{" "}
+                      <a
+                        href="https://business.facebook.com/events_manager"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary underline"
+                      >
+                        Gerenciador de Eventos do Meta
+                      </a>
+                      .
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <Button
                 onClick={handleSaveProfile}
                 className={`self-end rounded-full px-6 transition-all ${saved ? "bg-green-500 hover:bg-green-500" : "bg-gradient-primary shadow-glow hover:scale-105"} text-primary-foreground`}
