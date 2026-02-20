@@ -1,6 +1,6 @@
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { Heart, Star, Lock, MessageCircle, Share2, ChevronLeft, Check, Zap, Users, UserPlus, UserCheck, Settings, Pencil, Trash2, FileText } from "lucide-react";
+import { Heart, Star, Lock, MessageCircle, Share2, ChevronLeft, Check, Zap, Users, UserPlus, UserCheck, Settings, Pencil, Trash2, FileText, Link2 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { useCreatorProfile } from "@/hooks/useCreatorProfile";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -16,6 +16,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { useAffiliateLinks } from "@/hooks/useAffiliateLinks";
 
 
 const defaultPlans = [
@@ -49,6 +50,7 @@ const postTypes = ["Todos", "Fotos", "Vídeos", "Lives"];
 
 const CreatorProfile = () => {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   
@@ -60,6 +62,40 @@ const CreatorProfile = () => {
   const [liked, setLiked] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(0);
   const [pixModalOpen, setPixModalOpen] = useState(false);
+
+  // Capture ref code from URL
+  useEffect(() => {
+    const ref = searchParams.get("ref");
+    if (ref) {
+      sessionStorage.setItem("affiliate_ref", ref);
+    }
+  }, [searchParams]);
+
+  // Affiliate link management
+  const { links: affiliateLinks, createLink: createAffiliateLink } = useAffiliateLinks(id);
+
+  const handleShareAffiliate = async () => {
+    if (!user) {
+      toast.info("Faça login para compartilhar como afiliado");
+      return;
+    }
+    // Check if user already has a link for this creator
+    const existing = affiliateLinks.find((l: any) => l.creator_id === id);
+    if (existing) {
+      const url = `${window.location.origin}/profile/${id}?ref=${existing.code}`;
+      navigator.clipboard.writeText(url);
+      toast.success("Link de afiliado copiado!");
+      return;
+    }
+    try {
+      const newLink = await createAffiliateLink.mutateAsync(id!);
+      const url = `${window.location.origin}/profile/${id}?ref=${newLink.code}`;
+      navigator.clipboard.writeText(url);
+      toast.success("Link de afiliado gerado e copiado!");
+    } catch {
+      toast.error("Erro ao gerar link de afiliado");
+    }
+  };
 
   // Owner management state
   const queryClient = useQueryClient();
@@ -231,9 +267,20 @@ const CreatorProfile = () => {
         >
           <ChevronLeft className="h-4 w-4" /> Voltar
         </Link>
-        <button className="absolute top-6 right-6 flex h-9 w-9 items-center justify-center rounded-full bg-background/60 backdrop-blur-sm border border-border/50 text-foreground hover:bg-background/80 transition-colors">
-          <Share2 className="h-4 w-4" />
-        </button>
+        <div className="flex gap-2">
+          <button className="flex h-9 w-9 items-center justify-center rounded-full bg-background/60 backdrop-blur-sm border border-border/50 text-foreground hover:bg-background/80 transition-colors">
+            <Share2 className="h-4 w-4" />
+          </button>
+          {user && !isOwner && (
+            <button
+              onClick={handleShareAffiliate}
+              className="flex items-center gap-1.5 rounded-full bg-background/60 backdrop-blur-sm border border-border/50 px-3 py-2 text-sm font-medium text-foreground hover:bg-background/80 transition-colors"
+            >
+              <Link2 className="h-4 w-4" />
+              Afiliado
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="container max-w-6xl">

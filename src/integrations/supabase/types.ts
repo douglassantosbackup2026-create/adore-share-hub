@@ -14,6 +14,75 @@ export type Database = {
   }
   public: {
     Tables: {
+      affiliate_links: {
+        Row: {
+          affiliate_id: string
+          code: string
+          created_at: string
+          creator_id: string
+          id: string
+        }
+        Insert: {
+          affiliate_id: string
+          code: string
+          created_at?: string
+          creator_id: string
+          id?: string
+        }
+        Update: {
+          affiliate_id?: string
+          code?: string
+          created_at?: string
+          creator_id?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      affiliate_referrals: {
+        Row: {
+          affiliate_link_id: string
+          commission_amount: number
+          commission_rate: number
+          created_at: string
+          id: string
+          status: string
+          subscription_id: string
+        }
+        Insert: {
+          affiliate_link_id: string
+          commission_amount: number
+          commission_rate: number
+          created_at?: string
+          id?: string
+          status?: string
+          subscription_id: string
+        }
+        Update: {
+          affiliate_link_id?: string
+          commission_amount?: number
+          commission_rate?: number
+          created_at?: string
+          id?: string
+          status?: string
+          subscription_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_referrals_affiliate_link_id_fkey"
+            columns: ["affiliate_link_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_links"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliate_referrals_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       creator_plans: {
         Row: {
           creator_id: string
@@ -148,6 +217,27 @@ export type Database = {
           id?: string
           plan?: string
           syncpay_id?: string
+        }
+        Relationships: []
+      }
+      platform_settings: {
+        Row: {
+          id: string
+          key: string
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          id?: string
+          key: string
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          id?: string
+          key?: string
+          updated_at?: string
+          value?: string
         }
         Relationships: []
       }

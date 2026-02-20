@@ -151,6 +151,7 @@ export function PixPaymentModal({
             fan_email: fanEmail,
             fan_name: fanName.trim(),
             fan_cpf: cpfDigits,
+            affiliate_ref: sessionStorage.getItem("affiliate_ref") || undefined,
           }),
         }
       );
