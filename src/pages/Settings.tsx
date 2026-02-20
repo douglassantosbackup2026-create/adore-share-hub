@@ -11,11 +11,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-const withdrawals = [
-  { id: 1, amount: "R$ 3.200,00", date: "01/02/2026", status: "Concluído" },
-  { id: 2, amount: "R$ 2.800,00", date: "01/01/2026", status: "Concluído" },
-  { id: 3, amount: "R$ 1.950,00", date: "01/12/2025", status: "Concluído" },
-];
 
 const Settings = () => {
   const { profile: authProfile, user, refreshProfile } = useAuth();
@@ -428,16 +423,8 @@ const Settings = () => {
                   <CreditCard className="h-5 w-5 text-primary" />
                   <h2 className="font-semibold text-foreground">Histórico de saques</h2>
                 </div>
-                <div className="flex flex-col gap-2">
-                  {withdrawals.map((w) => (
-                    <div key={w.id} className="flex items-center justify-between rounded-lg bg-muted/20 px-4 py-3">
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">{w.amount}</p>
-                        <p className="text-xs text-muted-foreground">{w.date}</p>
-                      </div>
-                      <span className="text-xs font-semibold text-green-400 rounded-full bg-green-400/10 px-3 py-1">{w.status}</span>
-                    </div>
-                  ))}
+              <div className="text-center py-8 text-sm text-muted-foreground">
+                  Nenhum saque realizado ainda.
                 </div>
               </div>
             </div>
