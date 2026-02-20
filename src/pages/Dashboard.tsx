@@ -173,6 +173,9 @@ const Dashboard = () => {
             <div key={stat.label} className="glass-card rounded-2xl p-5 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">{stat.label}</span>
+                {"note" in stat && (stat as any).note && (
+                  <span className="text-[10px] text-muted-foreground/70 block">{(stat as any).note}</span>
+                )}
                 <div className={`flex h-8 w-8 items-center justify-center rounded-full bg-muted/30 ${stat.color}`}>
                   <stat.icon className="h-4 w-4" />
                 </div>
