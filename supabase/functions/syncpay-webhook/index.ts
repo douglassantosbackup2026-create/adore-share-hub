@@ -162,6 +162,7 @@ Deno.serve(async (req) => {
             });
 
           console.log(`Affiliate referral created: link=${affLink.id} commission=${commissionAmount}`);
+          } // end approved check
         }
       } catch (affErr) {
         console.error("Affiliate referral error (non-fatal):", affErr);

@@ -74,13 +74,38 @@ const CreatorProfile = () => {
 
   // Affiliate link management
   const { links: affiliateLinks, createLink: createAffiliateLink } = useAffiliateLinks(id);
+  const { data: affiliateRequest, isLoading: affReqLoading } = useMyAffiliateRequest();
+  const createAffiliateRequest = useCreateAffiliateRequest();
 
   const handleShareAffiliate = async () => {
     if (!user) {
       toast.info("Faça login para compartilhar como afiliado");
       return;
     }
-    // Check if user already has a link for this creator
+
+    // Check affiliate request status
+    if (!affiliateRequest) {
+      // No request yet — create one
+      try {
+        await createAffiliateRequest.mutateAsync();
+        toast.info("Sua solicitação de afiliado foi enviada! Aguarde aprovação do admin.");
+      } catch {
+        toast.error("Erro ao enviar solicitação de afiliado");
+      }
+      return;
+    }
+
+    if (affiliateRequest.status === "pending") {
+      toast.info("Sua solicitação de afiliado está aguardando aprovação.");
+      return;
+    }
+
+    if (affiliateRequest.status === "rejected") {
+      toast.error("Sua solicitação de afiliado foi negada.");
+      return;
+    }
+
+    // approved — generate/copy link
     const existing = affiliateLinks.find((l: any) => l.creator_id === id);
     if (existing) {
       const url = `${window.location.origin}/profile/${id}?ref=${existing.code}`;
