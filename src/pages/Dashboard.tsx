@@ -58,12 +58,13 @@ const Dashboard = () => {
 
   const stats = [
     {
-      label: "Receita Mensal",
+      label: "Receita Líquida",
       value: dashStats ? `R$ ${dashStats.revenue.toLocaleString("pt-BR")}` : "R$ 6.100",
       change: "+18%",
       up: true,
       icon: DollarSign,
       color: "text-green-400",
+      note: "após taxa de 20%",
     },
     {
       label: "Assinantes",
