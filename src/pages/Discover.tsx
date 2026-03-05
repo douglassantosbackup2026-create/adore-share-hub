@@ -30,18 +30,8 @@ const Discover = () => {
       return 0;
     });
 
-  const handleConfirm = () => {
-    localStorage.setItem("age_verified", "true");
-    setShowAgeGate(false);
-  };
-
-  const handleDeny = () => {
-    navigate("/");
-  };
-
   return (
     <div className="min-h-screen bg-background">
-      <AgeGateModal open={showAgeGate} onConfirm={handleConfirm} onDeny={handleDeny} />
       <Navbar />
 
       {/* Hero strip */}
