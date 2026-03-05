@@ -33,7 +33,7 @@ export function useCreatorProfile(creatorId: string | undefined, user?: User | n
 
   const postsQuery = useQuery({
     queryKey: ["creatorPosts", creatorId],
-    enabled: !!creatorId && !!user,
+    enabled: !!creatorId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("posts")

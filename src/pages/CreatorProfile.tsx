@@ -424,32 +424,103 @@ const CreatorProfile = () => {
                 ))}
               </div>
             ) : !user ? (
-              /* Unauthenticated: show signup gate over placeholder grid */
-              <div className="relative">
-                <div className="grid grid-cols-3 gap-2 select-none pointer-events-none opacity-40 blur-[2px]">
-                  {Array.from({ length: 9 }).map((_, i) => (
-                    <div key={i} className="aspect-square rounded-xl bg-muted border border-border/40" />
-                  ))}
-                </div>
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 rounded-2xl bg-background/80 backdrop-blur-sm border border-border/40">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 border border-primary/30">
-                    <Lock className="h-6 w-6 text-primary" />
+              /* Unauthenticated: show free posts + teaser locked + signup banner */
+              (() => {
+                const freePosts = displayPosts.filter((p) => p.minPlan === "free");
+                const paidPosts = displayPosts.filter((p) => p.minPlan !== "free");
+                const teaserPosts = paidPosts.slice(0, 3);
+
+                return freePosts.length === 0 && paidPosts.length === 0 ? (
+                  <div className="col-span-3 py-16 text-center text-muted-foreground">
+                    <p className="text-sm">Nenhum post publicado ainda.</p>
                   </div>
-                  <div className="text-center px-4">
-                    <p className="font-display font-bold text-foreground text-base mb-1">Crie sua conta para ver o conteúdo</p>
-                    <p className="text-sm text-muted-foreground">Cadastro gratuito. Acesse posts exclusivos.</p>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-3 gap-2">
+                      {/* Free posts — fully visible */}
+                      {freePosts.map((post) => (
+                        <div
+                          key={post.id}
+                          className="group relative aspect-square rounded-xl overflow-hidden bg-muted border border-border/40 cursor-pointer"
+                        >
+                          {post.mediaUrl ? (
+                            <img
+                              src={post.mediaUrl}
+                              alt=""
+                              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
+                            />
+                          ) : (
+                            <div className="h-full w-full bg-gradient-to-br from-muted to-secondary flex items-center justify-center">
+                              <span className="text-muted-foreground text-xs">Sem mídia</span>
+                            </div>
+                          )}
+                          {post.type === "video" && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-background/70 backdrop-blur-sm">
+                                <Zap className="h-4 w-4 text-primary fill-current" />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+
+                      {/* Teaser locked posts — blurred */}
+                      {teaserPosts.map((post) => (
+                        <div
+                          key={post.id}
+                          onClick={() => {
+                            toast.info("Crie uma conta para acessar conteúdo exclusivo");
+                            navigate("/signup");
+                          }}
+                          className="group relative aspect-square rounded-xl overflow-hidden bg-muted border border-border/40 cursor-pointer"
+                        >
+                          {post.mediaUrl ? (
+                            <img
+                              src={post.mediaUrl}
+                              alt=""
+                              className="h-full w-full object-cover blur-xl scale-110"
+                            />
+                          ) : (
+                            <div className="h-full w-full bg-gradient-to-br from-muted to-secondary blur-sm" />
+                          )}
+                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-background/70 backdrop-blur-sm border border-border/60">
+                              <Lock className="h-4 w-4 text-primary" />
+                            </div>
+                            <p className="text-[10px] font-medium text-foreground/80">Conteúdo exclusivo</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Signup banner */}
+                    {(paidPosts.length > 0 || freePosts.length > 0) && (
+                      <div className="flex flex-col items-center gap-4 rounded-2xl bg-card border border-border/40 p-8 text-center">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 border border-primary/30">
+                          <Lock className="h-6 w-6 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-display font-bold text-foreground text-base mb-1">
+                            Crie sua conta para ver mais conteúdo
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            Cadastro gratuito. Acesse posts exclusivos de {creator.name}.
+                          </p>
+                        </div>
+                        <Link
+                          to="/signup"
+                          className="rounded-full bg-gradient-primary px-6 py-2.5 text-sm font-bold text-primary-foreground shadow-glow hover:scale-105 transition-transform"
+                        >
+                          Cadastrar agora
+                        </Link>
+                        <Link to="/login" className="text-xs text-muted-foreground hover:text-primary transition-colors">
+                          Já tenho conta → Entrar
+                        </Link>
+                      </div>
+                    )}
                   </div>
-                  <Link
-                    to="/signup"
-                    className="rounded-full bg-gradient-primary px-6 py-2.5 text-sm font-bold text-primary-foreground shadow-glow hover:scale-105 transition-transform"
-                  >
-                    Cadastrar agora
-                  </Link>
-                  <Link to="/login" className="text-xs text-muted-foreground hover:text-primary transition-colors">
-                    Já tenho conta → Entrar
-                  </Link>
-                </div>
-              </div>
+                );
+              })()
             ) : displayPosts.length === 0 ? (
               <div className="col-span-3 py-16 text-center text-muted-foreground">
                 <p className="text-sm">Nenhum post publicado ainda.</p>

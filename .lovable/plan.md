@@ -1,28 +1,41 @@
 
 
-## Mostrar posts gratuitos para visitantes antes de pedir cadastro
+## Corrigir pixel do criador no Meta Pixel Helper
 
-### Situação atual
-Na página do criador (`CreatorProfile.tsx`, linhas 426-452), quando o visitante não está logado, **todo** o conteúdo é escondido com um overlay de blur + placeholder cinza e um CTA "Cadastrar agora". Nenhuma foto/vídeo real é exibida.
+### Problema identificado
 
-### Plano
+O hook `useCreatorPixel` esta implementado corretamente, mas ha dois problemas potenciais:
 
-Alterar a lógica para que visitantes não logados vejam os **posts gratuitos** (`min_plan === "free"`) normalmente, e o overlay de cadastro apareça somente **após os primeiros posts visíveis** (como um "muro" parcial).
+1. **O hook so roda na pagina de perfil do criador** (`/creator/:id`). Se voce esta testando na pagina inicial (`/`), o pixel do criador nao sera inicializado.
 
-**Mudanças em `src/pages/CreatorProfile.tsx`:**
+2. **O `fbq('track', 'PageView')` generico pode nao estar associando corretamente ao pixel do criador**. O Meta Pixel Helper pode nao reconhecer o segundo pixel se ele for inicializado depois do carregamento da pagina sem um disparo especifico via `trackSingle`.
 
-1. **Remover o bloqueio total para `!user`** -- em vez de mostrar o overlay sobre placeholders, renderizar os posts gratuitos normalmente (como já faz para usuários logados).
+### Solucao
 
-2. **Separar posts em duas listas**: posts gratuitos (visíveis) e posts pagos (bloqueados). Para visitantes, mostrar os gratuitos com imagem real + os primeiros 2-3 pagos como locked (blur), e depois inserir um **banner de cadastro inline** no grid.
+Atualizar o hook `useCreatorPixel` para:
 
-3. **Banner de cadastro inline**: Após os posts gratuitos + alguns locked, renderizar um card que ocupa a largura toda com o CTA "Crie sua conta para ver mais conteúdo" + botão de cadastro. Posts restantes ficam ocultos.
+- Usar `fbq('trackSingle', pixelId, 'PageView')` em vez de `fbq('track', 'PageView')` -- isso garante que o PageView seja disparado especificamente para o pixel do criador, forcando o Pixel Helper a reconhece-lo.
+- Adicionar um `console.log` temporario para depuracao, confirmando que o pixel esta sendo inicializado.
 
-4. **Manter a proteção para posts pagos**: Posts com `min_plan !== "free"` continuam com o visual de lock (blur + ícone de cadeado), mas ao clicar, redirecionam para `/signup` em vez de abrir o modal de pagamento.
+### Mudancas
 
-### Resultado esperado
+**1. `src/hooks/useCreatorPixel.ts`**
 
-- Visitante entra no perfil → vê as fotos/vídeos gratuitos normalmente
-- Após os conteúdos gratuitos, vê 2-3 posts com blur (locked) como "teaser"
-- Um banner inline convida ao cadastro
-- Clique em post locked → redireciona para signup
+Atualizar o hook para usar `trackSingle`:
+
+```typescript
+export function useCreatorPixel(pixelId: string | undefined) {
+  useEffect(() => {
+    if (!pixelId || !window.fbq) return;
+    window.fbq("init", pixelId);
+    window.fbq("trackSingle", pixelId, "PageView");
+  }, [pixelId]);
+}
+```
+
+### Como testar
+
+1. Acesse o perfil de um criador que tenha o pixel configurado (ex: Ana Julia - Bahia)
+2. O Meta Pixel Helper deve mostrar 2 pixels: o da plataforma (1688353905856977) e o do criador (4384406811885630)
+3. Ambos devem mostrar o evento PageView
 
