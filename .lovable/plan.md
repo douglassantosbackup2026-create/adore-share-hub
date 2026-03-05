@@ -1,41 +1,25 @@
 
 
-## Corrigir pixel do criador no Meta Pixel Helper
+## Age Gate global em todas as paginas
 
-### Problema identificado
+### Plano
 
-O hook `useCreatorPixel` esta implementado corretamente, mas ha dois problemas potenciais:
-
-1. **O hook so roda na pagina de perfil do criador** (`/creator/:id`). Se voce esta testando na pagina inicial (`/`), o pixel do criador nao sera inicializado.
-
-2. **O `fbq('track', 'PageView')` generico pode nao estar associando corretamente ao pixel do criador**. O Meta Pixel Helper pode nao reconhecer o segundo pixel se ele for inicializado depois do carregamento da pagina sem um disparo especifico via `trackSingle`.
-
-### Solucao
-
-Atualizar o hook `useCreatorPixel` para:
-
-- Usar `fbq('trackSingle', pixelId, 'PageView')` em vez de `fbq('track', 'PageView')` -- isso garante que o PageView seja disparado especificamente para o pixel do criador, forcando o Pixel Helper a reconhece-lo.
-- Adicionar um `console.log` temporario para depuracao, confirmando que o pixel esta sendo inicializado.
+Mover o `AgeGateModal` do `Discover.tsx` para o nivel do `App.tsx`, tornando-o global. Assim, qualquer pagina exibira o modal antes de permitir interacao.
 
 ### Mudancas
 
-**1. `src/hooks/useCreatorPixel.ts`**
+**1. `src/App.tsx`**
+- Importar `AgeGateModal` e `useState`
+- Adicionar estado `showAgeGate` (lendo `localStorage`)
+- Renderizar `<AgeGateModal>` acima do `<Routes>`, dentro do `AuthProvider`
+- `onConfirm`: salvar no `localStorage` e fechar
+- `onDeny`: redirecionar para uma pagina externa (ex: `google.com`) ja que nao ha pagina "segura" para redirecionar
 
-Atualizar o hook para usar `trackSingle`:
+**2. `src/pages/Discover.tsx`**
+- Remover o `AgeGateModal`, o estado `showAgeGate`, e os handlers `handleConfirm`/`handleDeny` -- nao sao mais necessarios aqui pois o gate agora e global
 
-```typescript
-export function useCreatorPixel(pixelId: string | undefined) {
-  useEffect(() => {
-    if (!pixelId || !window.fbq) return;
-    window.fbq("init", pixelId);
-    window.fbq("trackSingle", pixelId, "PageView");
-  }, [pixelId]);
-}
-```
-
-### Como testar
-
-1. Acesse o perfil de um criador que tenha o pixel configurado (ex: Ana Julia - Bahia)
-2. O Meta Pixel Helper deve mostrar 2 pixels: o da plataforma (1688353905856977) e o do criador (4384406811885630)
-3. Ambos devem mostrar o evento PageView
+### Resultado
+- Visitante acessa qualquer pagina → modal de verificacao de idade aparece
+- Apos confirmar, o modal nao aparece novamente (persistido no `localStorage`)
+- Se negar, e redirecionado para fora do site
 
