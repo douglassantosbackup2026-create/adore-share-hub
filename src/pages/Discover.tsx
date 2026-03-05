@@ -1,22 +1,16 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Search, SlidersHorizontal, Flame } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import CreatorCard from "@/components/CreatorCard";
 import mockCreators from "@/data/creators";
 import { useCreators } from "@/hooks/useCreators";
-import AgeGateModal from "@/components/AgeGateModal";
 
 const categories = ["Todos", "Fitness", "Arte", "Gastronomia", "Música", "Educação", "Lifestyle", "Moda", "Gaming"];
 
 const Discover = () => {
-  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("Todos");
   const [sortBy, setSortBy] = useState<"popular" | "preco" | "novo">("popular");
-  const [showAgeGate, setShowAgeGate] = useState(
-    () => localStorage.getItem("age_verified") !== "true"
-  );
 
   const { data: realCreators } = useCreators();
   const creators = realCreators?.length ? realCreators : mockCreators;
@@ -36,18 +30,8 @@ const Discover = () => {
       return 0;
     });
 
-  const handleConfirm = () => {
-    localStorage.setItem("age_verified", "true");
-    setShowAgeGate(false);
-  };
-
-  const handleDeny = () => {
-    navigate("/");
-  };
-
   return (
     <div className="min-h-screen bg-background">
-      <AgeGateModal open={showAgeGate} onConfirm={handleConfirm} onDeny={handleDeny} />
       <Navbar />
 
       {/* Hero strip */}
