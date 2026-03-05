@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -7,6 +8,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import CreatorRoute from "@/components/CreatorRoute";
 import AdminRoute from "@/components/AdminRoute";
+import AgeGateModal from "@/components/AgeGateModal";
 import Index from "./pages/Index";
 import Discover from "./pages/Discover";
 import CreatorProfile from "./pages/CreatorProfile";
@@ -24,13 +26,28 @@ import PendingApproval from "./pages/PendingApproval";
 
 const queryClient = new QueryClient();
 
-const App = () => (
+const App = () => {
+  const [showAgeGate, setShowAgeGate] = useState(
+    () => localStorage.getItem("age_verified") !== "true"
+  );
+
+  const handleConfirm = () => {
+    localStorage.setItem("age_verified", "true");
+    setShowAgeGate(false);
+  };
+
+  const handleDeny = () => {
+    window.location.href = "https://google.com";
+  };
+
+  return (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <AgeGateModal open={showAgeGate} onConfirm={handleConfirm} onDeny={handleDeny} />
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/discover" element={<Discover />} />
