@@ -1,33 +1,41 @@
 
 
-## Corrigir carregamento de dados para visitantes não logados
+## Corrigir pixel do criador no Meta Pixel Helper
 
-### Causa raiz
+### Problema identificado
 
-A política RLS da tabela `posts` chamada **"Authenticated users can view free posts"** exige `auth.uid() IS NOT NULL`, o que bloqueia completamente visitantes não autenticados de ver qualquer post -- mesmo os gratuitos. Como a feature anterior (mostrar posts gratuitos para visitantes) depende disso, nenhum dado aparece.
+O hook `useCreatorPixel` esta implementado corretamente, mas ha dois problemas potenciais:
 
-### Plano
+1. **O hook so roda na pagina de perfil do criador** (`/creator/:id`). Se voce esta testando na pagina inicial (`/`), o pixel do criador nao sera inicializado.
 
-**1. Atualizar a política RLS de posts gratuitos (migração SQL)**
+2. **O `fbq('track', 'PageView')` generico pode nao estar associando corretamente ao pixel do criador**. O Meta Pixel Helper pode nao reconhecer o segundo pixel se ele for inicializado depois do carregamento da pagina sem um disparo especifico via `trackSingle`.
 
-Substituir a política atual por uma que permita acesso anônimo a posts com `min_plan = 'free'`:
+### Solucao
 
-```sql
-DROP POLICY "Authenticated users can view free posts" ON public.posts;
+Atualizar o hook `useCreatorPixel` para:
 
-CREATE POLICY "Anyone can view free posts"
-ON public.posts
-FOR SELECT
-TO anon, authenticated
-USING (min_plan = 'free');
+- Usar `fbq('trackSingle', pixelId, 'PageView')` em vez de `fbq('track', 'PageView')` -- isso garante que o PageView seja disparado especificamente para o pixel do criador, forcando o Pixel Helper a reconhece-lo.
+- Adicionar um `console.log` temporario para depuracao, confirmando que o pixel esta sendo inicializado.
+
+### Mudancas
+
+**1. `src/hooks/useCreatorPixel.ts`**
+
+Atualizar o hook para usar `trackSingle`:
+
+```typescript
+export function useCreatorPixel(pixelId: string | undefined) {
+  useEffect(() => {
+    if (!pixelId || !window.fbq) return;
+    window.fbq("init", pixelId);
+    window.fbq("trackSingle", pixelId, "PageView");
+  }, [pixelId]);
+}
 ```
 
-Isso permite que visitantes não logados (role `anon`) vejam posts gratuitos, enquanto a política existente "Subscribers can view paid posts" continua restringindo posts pagos a assinantes autenticados.
+### Como testar
 
-**2. Nenhuma mudança de código necessária** -- os hooks (`useCreatorProfile`, `usePosts`, `useCreators`) já fazem as queries corretas. O bloqueio é exclusivamente na camada de RLS do banco de dados.
-
-### Resultado
-
-- Visitantes não logados verão posts gratuitos no perfil do criador, feed e discover
-- Posts pagos continuam protegidos (só visíveis para assinantes ou o próprio criador)
+1. Acesse o perfil de um criador que tenha o pixel configurado (ex: Ana Julia - Bahia)
+2. O Meta Pixel Helper deve mostrar 2 pixels: o da plataforma (1688353905856977) e o do criador (4384406811885630)
+3. Ambos devem mostrar o evento PageView
 
