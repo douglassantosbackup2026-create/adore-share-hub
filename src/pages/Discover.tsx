@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Search, SlidersHorizontal, Flame } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import CreatorCard from "@/components/CreatorCard";
+import CreatorCardSkeleton from "@/components/CreatorCardSkeleton";
 import mockCreators from "@/data/creators";
 import { useCreators } from "@/hooks/useCreators";
 
@@ -12,7 +13,7 @@ const Discover = () => {
   const [activeCategory, setActiveCategory] = useState("Todos");
   const [sortBy, setSortBy] = useState<"popular" | "preco" | "novo">("popular");
 
-  const { data: realCreators } = useCreators();
+  const { data: realCreators, isLoading } = useCreators();
   const creators = realCreators?.length ? realCreators : mockCreators;
 
   const filtered = creators
@@ -96,7 +97,13 @@ const Discover = () => {
         </div>
 
         {/* Grid */}
-        {filtered.length > 0 ? (
+        {isLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <CreatorCardSkeleton key={i} />
+            ))}
+          </div>
+        ) : filtered.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             {filtered.map((creator, i) => (
               <div

@@ -1,72 +1,41 @@
 
 
-## Melhorias de UX — Plano de Implementacao
+## Corrigir pixel do criador no Meta Pixel Helper
 
-### 1. Loading States (Skeletons) nas paginas principais
+### Problema identificado
 
-**Arquivos:** `Feed.tsx`, `Discover.tsx`, `CreatorProfile.tsx`
+O hook `useCreatorPixel` esta implementado corretamente, mas ha dois problemas potenciais:
 
-- Criar componente `PostSkeleton` reutilizavel (card com pulsos animados para avatar, texto, imagem)
-- Criar `CreatorCardSkeleton` para o grid do Discover
-- No Feed: mostrar 3 `PostSkeleton` enquanto `usePosts` esta carregando, e skeletons nos stories
-- No Discover: mostrar grid de 8 `CreatorCardSkeleton` enquanto `useCreators` carrega
-- No CreatorProfile: skeleton para cover/avatar/stats enquanto `useCreatorProfile` carrega
-- Usar o componente `Skeleton` ja existente em `src/components/ui/skeleton.tsx`
+1. **O hook so roda na pagina de perfil do criador** (`/creator/:id`). Se voce esta testando na pagina inicial (`/`), o pixel do criador nao sera inicializado.
 
-### 2. Busca global funcional na Navbar
+2. **O `fbq('track', 'PageView')` generico pode nao estar associando corretamente ao pixel do criador**. O Meta Pixel Helper pode nao reconhecer o segundo pixel se ele for inicializado depois do carregamento da pagina sem um disparo especifico via `trackSingle`.
 
-**Arquivos:** `Navbar.tsx` (novo componente `SearchDialog.tsx`)
+### Solucao
 
-- Criar `SearchDialog` usando `CommandDialog` (cmdk ja instalado em `src/components/ui/command.tsx`)
-- Ao clicar no icone de busca na Navbar, abrir o dialog
-- Buscar criadores na tabela `profiles` (role=creator) e posts em `posts` via Supabase
-- Exibir resultados agrupados (Criadores / Posts) com links para `/creator/:id` ou scroll ao post
-- Suportar atalho Ctrl+K para abrir
-- Debounce de 300ms na digitacao
+Atualizar o hook `useCreatorPixel` para:
 
-### 3. Sugestoes mobile no Feed
+- Usar `fbq('trackSingle', pixelId, 'PageView')` em vez de `fbq('track', 'PageView')` -- isso garante que o PageView seja disparado especificamente para o pixel do criador, forcando o Pixel Helper a reconhece-lo.
+- Adicionar um `console.log` temporario para depuracao, confirmando que o pixel esta sendo inicializado.
 
-**Arquivo:** `Feed.tsx`
+### Mudancas
 
-- Adicionar uma faixa horizontal scrollavel de sugestoes logo abaixo dos stories (visivel apenas em telas < lg)
-- Reutilizar os dados de `suggestions` ja existentes
-- Renderizar cards compactos (avatar + nome + botao seguir) em scroll horizontal
-- Classe: `flex lg:hidden` para aparecer apenas no mobile
+**1. `src/hooks/useCreatorPixel.ts`**
 
-### 4. Onboarding do fa
+Atualizar o hook para usar `trackSingle`:
 
-**Arquivos:** novo `src/pages/FanOnboarding.tsx`, `AuthContext.tsx`, `App.tsx`
+```typescript
+export function useCreatorPixel(pixelId: string | undefined) {
+  useEffect(() => {
+    if (!pixelId || !window.fbq) return;
+    window.fbq("init", pixelId);
+    window.fbq("trackSingle", pixelId, "PageView");
+  }, [pixelId]);
+}
+```
 
-- Nova rota `/fan-onboarding` protegida
-- Apos signup como fan, redirecionar para `/fan-onboarding` em vez de `/feed`
-- Pagina com 2 etapas:
-  1. Escolher categorias de interesse (pills selecionaveis das mesmas categorias do Discover)
-  2. Lista de criadores sugeridos com base nas categorias, com botao "Seguir" (usando `useFollow`)
-- Botao "Pular" sempre visivel
-- Ao concluir, navegar para `/feed`
-- Marcar onboarding completo via `localStorage` (chave `fan_onboarded`) para nao repetir
+### Como testar
 
-### 5. Compartilhamento de posts
-
-**Arquivo:** `Feed.tsx`
-
-- No botao `Share2` do post, implementar:
-  1. Se `navigator.share` disponivel (mobile): usar Web Share API com titulo + URL do post (`/creator/:creatorId`)
-  2. Senao: copiar link para clipboard com `navigator.clipboard.writeText` e mostrar toast "Link copiado!"
-- Criar funcao `handleShare(post)` que gera a URL e dispara a acao
-
-### Resumo de arquivos modificados/criados
-
-| Arquivo | Acao |
-|---|---|
-| `src/components/PostSkeleton.tsx` | Criar |
-| `src/components/CreatorCardSkeleton.tsx` | Criar |
-| `src/components/SearchDialog.tsx` | Criar |
-| `src/pages/FanOnboarding.tsx` | Criar |
-| `src/pages/Feed.tsx` | Editar (skeletons, sugestoes mobile, share) |
-| `src/pages/Discover.tsx` | Editar (skeletons) |
-| `src/pages/CreatorProfile.tsx` | Editar (skeletons) |
-| `src/components/Navbar.tsx` | Editar (integrar SearchDialog) |
-| `src/pages/Signup.tsx` | Editar (redirecionar fan para /fan-onboarding) |
-| `src/App.tsx` | Editar (nova rota /fan-onboarding) |
+1. Acesse o perfil de um criador que tenha o pixel configurado (ex: Ana Julia - Bahia)
+2. O Meta Pixel Helper deve mostrar 2 pixels: o da plataforma (1688353905856977) e o do criador (4384406811885630)
+3. Ambos devem mostrar o evento PageView
 

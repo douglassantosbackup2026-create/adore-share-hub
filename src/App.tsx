@@ -23,6 +23,7 @@ import FanProfile from "./pages/FanProfile";
 import Onboarding from "./pages/Onboarding";
 import Admin from "./pages/Admin";
 import PendingApproval from "./pages/PendingApproval";
+import FanOnboarding from "./pages/FanOnboarding";
 
 const queryClient = new QueryClient();
 
@@ -60,6 +61,7 @@ const App = () => {
             <Route path="/settings" element={<CreatorRoute><Settings /></CreatorRoute>} />
             <Route path="/profile/:id" element={<FanProfile />} />
             <Route path="/onboarding" element={<CreatorRoute><Onboarding /></CreatorRoute>} />
+            <Route path="/fan-onboarding" element={<ProtectedRoute><FanOnboarding /></ProtectedRoute>} />
             <Route path="/pending-approval" element={<PendingApproval />} />
             <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

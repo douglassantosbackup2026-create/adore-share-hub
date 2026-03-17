@@ -2,10 +2,12 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useRef, useEffect } from "react";
 import { Menu, X, Flame, Search, Bell, User, LayoutDashboard, MessageCircle, Rss, LogOut, UserCircle2, Settings } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import SearchDialog from "@/components/SearchDialog";
 
 const Navbar = () => {
   const [open, setOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const { user, profile, signOut } = useAuth();
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -32,6 +34,18 @@ const Navbar = () => {
     setDropdownOpen(false);
     navigate("/");
   };
+
+  // Ctrl+K shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -69,7 +83,10 @@ const Navbar = () => {
         </nav>
 
         <div className="hidden md:flex items-center gap-3">
-          <button className="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 text-muted-foreground transition-colors hover:text-foreground hover:border-primary/50">
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 text-muted-foreground transition-colors hover:text-foreground hover:border-primary/50"
+          >
             <Search className="h-4 w-4" />
           </button>
 
@@ -176,6 +193,7 @@ const Navbar = () => {
           </div>
         </div>
       )}
+      <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
     </header>
   );
 };
