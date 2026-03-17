@@ -13,7 +13,7 @@ const Discover = () => {
   const [activeCategory, setActiveCategory] = useState("Todos");
   const [sortBy, setSortBy] = useState<"popular" | "preco" | "novo">("popular");
 
-  const { data: realCreators } = useCreators();
+  const { data: realCreators, isLoading } = useCreators();
   const creators = realCreators?.length ? realCreators : mockCreators;
 
   const filtered = creators
