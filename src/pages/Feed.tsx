@@ -200,8 +200,8 @@ function SuggestionItem({ creator }: { creator: { id: string | number; name: str
 }
 
 const Feed = () => {
-  const { posts: realPosts, likePost } = usePosts();
-  const { data: realCreators } = useCreators();
+  const { posts: realPosts, likePost, isLoading: postsLoading } = usePosts();
+  const { data: realCreators, isLoading: creatorsLoading } = useCreators();
   const { user, profile } = useAuth();
   const mySubscriptions = useMySubscriptions();
   const [localLikes, setLocalLikes] = useState<Set<string>>(new Set());
