@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useRef, useEffect } from "react";
 import { Menu, X, Flame, Search, Bell, User, LayoutDashboard, MessageCircle, Rss, LogOut, UserCircle2, Settings } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import SearchDialog from "@/components/SearchDialog";
 
 const Navbar = () => {
   const [open, setOpen] = useState(false);
