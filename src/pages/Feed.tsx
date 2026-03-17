@@ -420,8 +420,8 @@ const Feed = () => {
               )}
             </div>
           ))}
-        ))}
         </div>
+
 
         {/* Sidebar */}
         <aside className="hidden lg:flex flex-col gap-4 w-72 flex-shrink-0">
