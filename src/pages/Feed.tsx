@@ -368,7 +368,18 @@ const Feed = () => {
                     <MessageCircle className={`h-5 w-5 ${openComments.has(post.id) ? "fill-primary/20" : ""}`} />
                     <span>{useReal ? (openComments.has(post.id) ? "−" : "+") : String(post.comments)}</span>
                   </button>
-                  <button className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  <button
+                    onClick={() => {
+                      const url = `${window.location.origin}/creator/${post.creator.id}`;
+                      if (navigator.share) {
+                        navigator.share({ title: `${post.creator.name} na Flare`, url });
+                      } else {
+                        navigator.clipboard.writeText(url);
+                        toast.success("Link copiado!");
+                      }
+                    }}
+                    className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  >
                     <Share2 className="h-5 w-5" />
                   </button>
                 </div>
