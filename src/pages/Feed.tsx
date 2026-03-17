@@ -291,25 +291,51 @@ const Feed = () => {
           {/* Stories */}
           <div className="glass-card rounded-2xl p-4">
             <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-hide">
-              {stories.map((creator) => (
-                <Link key={creator.id} to={`/creator/${creator.id}`} className="flex flex-col items-center gap-2 flex-shrink-0">
-                  <div className="relative">
-                    <div className="h-16 w-16 rounded-full p-0.5 bg-gradient-primary shadow-glow">
-                      <img
-                        src={(creator as any).avatar_url || (creator as any).avatar || "/placeholder.svg"}
-                        alt={creator.name}
-                        className="h-full w-full rounded-full object-cover border-2 border-background"
-                      />
+              {creatorsLoading
+                ? Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="flex flex-col items-center gap-2 flex-shrink-0">
+                      <Skeleton className="h-16 w-16 rounded-full" />
+                      <Skeleton className="h-3 w-12" />
                     </div>
-                  </div>
-                  <span className="text-xs text-muted-foreground max-w-[60px] truncate">{creator.name.split(" ")[0]}</span>
-                </Link>
-              ))}
+                  ))
+                : stories.map((creator) => (
+                    <Link key={creator.id} to={`/creator/${creator.id}`} className="flex flex-col items-center gap-2 flex-shrink-0">
+                      <div className="relative">
+                        <div className="h-16 w-16 rounded-full p-0.5 bg-gradient-primary shadow-glow">
+                          <img
+                            src={(creator as any).avatar_url || (creator as any).avatar || "/placeholder.svg"}
+                            alt={creator.name}
+                            className="h-full w-full rounded-full object-cover border-2 border-background"
+                          />
+                        </div>
+                      </div>
+                      <span className="text-xs text-muted-foreground max-w-[60px] truncate">{creator.name.split(" ")[0]}</span>
+                    </Link>
+                  ))}
             </div>
           </div>
 
+          {/* Mobile suggestions */}
+          <div className="flex lg:hidden gap-3 overflow-x-auto pb-1 scrollbar-hide">
+            {suggestions.map((creator) => (
+              <Link key={creator.id} to={`/creator/${creator.id}`} className="flex items-center gap-2 flex-shrink-0 glass-card rounded-xl px-3 py-2">
+                <img
+                  src={(creator as any).avatar_url || (creator as any).avatar || "/placeholder.svg"}
+                  alt={creator.name}
+                  className="h-8 w-8 rounded-full object-cover"
+                />
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-foreground truncate max-w-[80px]">{creator.name}</p>
+                  <p className="text-[10px] text-muted-foreground">{(creator as any).category}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+
           {/* Posts */}
-          {displayPosts.map((post) => (
+          {postsLoading ? (
+            Array.from({ length: 3 }).map((_, i) => <PostSkeleton key={i} />)
+          ) : displayPosts.map((post) => (
             <div key={post.id} className="glass-card rounded-2xl overflow-hidden">
               <div className="flex items-center justify-between p-4">
                 <Link to={`/creator/${post.creator.id}`} className="flex items-center gap-3">
