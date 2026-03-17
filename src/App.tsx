@@ -23,6 +23,7 @@ import FanProfile from "./pages/FanProfile";
 import Onboarding from "./pages/Onboarding";
 import Admin from "./pages/Admin";
 import PendingApproval from "./pages/PendingApproval";
+import FanOnboarding from "./pages/FanOnboarding";
 
 const queryClient = new QueryClient();
 
