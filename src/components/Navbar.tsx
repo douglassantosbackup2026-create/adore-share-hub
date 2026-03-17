@@ -7,6 +7,7 @@ import SearchDialog from "@/components/SearchDialog";
 const Navbar = () => {
   const [open, setOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const { user, profile, signOut } = useAuth();
   const { pathname } = useLocation();
   const navigate = useNavigate();
