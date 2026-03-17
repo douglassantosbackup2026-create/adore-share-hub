@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Search, SlidersHorizontal, Flame } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import CreatorCard from "@/components/CreatorCard";
+import CreatorCardSkeleton from "@/components/CreatorCardSkeleton";
 import mockCreators from "@/data/creators";
 import { useCreators } from "@/hooks/useCreators";
 
