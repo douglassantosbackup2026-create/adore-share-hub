@@ -193,6 +193,7 @@ const Navbar = () => {
           </div>
         </div>
       )}
+      <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
     </header>
   );
 };

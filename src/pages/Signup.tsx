@@ -64,7 +64,7 @@ const Signup = () => {
     } else {
       sendMetaEvent({ event_name: "CompleteRegistration", user_email: form.email });
       toast({ title: "Conta criada com sucesso!" });
-      navigate(role === "creator" ? "/onboarding" : "/feed");
+      navigate(role === "creator" ? "/onboarding" : "/fan-onboarding");
     }
   };
 

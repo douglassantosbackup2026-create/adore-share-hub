@@ -420,6 +420,7 @@ const Feed = () => {
               )}
             </div>
           ))}
+        ))}
         </div>
 
         {/* Sidebar */}
