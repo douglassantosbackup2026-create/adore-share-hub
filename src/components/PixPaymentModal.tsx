@@ -334,10 +334,25 @@ export function PixPaymentModal({
               </div>
             </div>
 
-            <p className="text-xs text-center text-muted-foreground">
-              O código expira em 30 minutos. Sua assinatura será ativada
-              automaticamente após o pagamento.
-            </p>
+            {(() => {
+              const mins = Math.floor(secondsLeft / 60);
+              const secs = secondsLeft % 60;
+              const colorClass = secondsLeft <= 300 ? "text-destructive" : secondsLeft <= 900 ? "text-yellow-500" : "text-primary";
+              return (
+                <div className="w-full space-y-2">
+                  <div className="flex items-center justify-center gap-2">
+                    <Clock className={`h-4 w-4 ${colorClass}`} />
+                    <span className={`text-sm font-bold tabular-nums ${colorClass}`}>
+                      {String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}
+                    </span>
+                  </div>
+                  <Progress value={(secondsLeft / 1800) * 100} className="h-2" />
+                  <p className="text-xs text-center text-muted-foreground">
+                    Sua assinatura será ativada automaticamente após o pagamento.
+                  </p>
+                </div>
+              );
+            })()}
 
             <button
               onClick={handleClose}
