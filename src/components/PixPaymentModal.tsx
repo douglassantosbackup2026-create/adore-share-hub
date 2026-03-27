@@ -72,8 +72,11 @@ export function PixPaymentModal({
       setIdentifier("");
       setCopied(false);
       setLoading(false);
+      setSecondsLeft(1800);
+      stopCountdown();
     } else {
       stopPolling();
+      stopCountdown();
     }
   }, [open]);
 
