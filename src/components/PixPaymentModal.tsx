@@ -58,7 +58,9 @@ export function PixPaymentModal({
   const [pixCode, setPixCode] = useState("");
   const [identifier, setIdentifier] = useState("");
   const [copied, setCopied] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(1800);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Reset on open
   useEffect(() => {
