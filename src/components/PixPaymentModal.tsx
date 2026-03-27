@@ -109,7 +109,7 @@ export function PixPaymentModal({
   }
 
   useEffect(() => {
-    return () => stopPolling();
+    return () => { stopPolling(); stopCountdown(); };
   }, []);
 
   function startPolling() {
