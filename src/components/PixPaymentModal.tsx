@@ -125,6 +125,7 @@ export function PixPaymentModal({
 
       if (data) {
         stopPolling();
+        stopCountdown();
         setStep("success");
         sessionStorage.removeItem("affiliate_ref");
         sendMetaEvent({
