@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useFollow } from "@/hooks/useFollow";
 import { Link } from "react-router-dom";
-import { Heart, MessageCircle, Share2, Lock, MoreHorizontal, Bookmark, Send, Loader2 } from "lucide-react";
+import { Heart, MessageCircle, Share2, Lock, MoreHorizontal, Bookmark, Send, Loader2, Flame } from "lucide-react";
 import PostSkeleton from "@/components/PostSkeleton";
 import { Skeleton } from "@/components/ui/skeleton";
 import Navbar from "@/components/Navbar";
