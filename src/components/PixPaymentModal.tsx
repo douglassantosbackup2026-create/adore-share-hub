@@ -195,6 +195,7 @@ export function PixPaymentModal({
       setIdentifier(json.identifier);
       setStep("pix");
       startPolling();
+      startCountdown();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erro ao gerar Pix");
     } finally {
