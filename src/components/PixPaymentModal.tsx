@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { Copy, Check, Loader2, X, Smartphone } from "lucide-react";
+import { Copy, Check, Loader2, X, Smartphone, Shield, ShieldCheck, Clock } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { sendMetaEvent } from "@/lib/metaCapi";
@@ -57,7 +58,9 @@ export function PixPaymentModal({
   const [pixCode, setPixCode] = useState("");
   const [identifier, setIdentifier] = useState("");
   const [copied, setCopied] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(1800);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Reset on open
   useEffect(() => {
@@ -69,8 +72,11 @@ export function PixPaymentModal({
       setIdentifier("");
       setCopied(false);
       setLoading(false);
+      setSecondsLeft(1800);
+      stopCountdown();
     } else {
       stopPolling();
+      stopCountdown();
     }
   }, [open]);
 
@@ -81,8 +87,29 @@ export function PixPaymentModal({
     }
   }
 
+  function stopCountdown() {
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
+  }
+
+  function startCountdown() {
+    stopCountdown();
+    setSecondsLeft(1800);
+    countdownRef.current = setInterval(() => {
+      setSecondsLeft((prev) => {
+        if (prev <= 1) {
+          stopCountdown();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }
+
   useEffect(() => {
-    return () => stopPolling();
+    return () => { stopPolling(); stopCountdown(); };
   }, []);
 
   function startPolling() {
@@ -98,6 +125,7 @@ export function PixPaymentModal({
 
       if (data) {
         stopPolling();
+        stopCountdown();
         setStep("success");
         sessionStorage.removeItem("affiliate_ref");
         sendMetaEvent({
@@ -167,6 +195,7 @@ export function PixPaymentModal({
       setIdentifier(json.identifier);
       setStep("pix");
       startPolling();
+      startCountdown();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erro ao gerar Pix");
     } finally {
@@ -232,7 +261,8 @@ export function PixPaymentModal({
                   inputMode="numeric"
                   className="bg-background border-border/60"
                 />
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                  <ShieldCheck className="h-3.5 w-3.5 text-primary" />
                   Exigido pelo gateway de pagamento. Não armazenamos seus dados.
                 </p>
               </div>
@@ -252,6 +282,11 @@ export function PixPaymentModal({
                 "Gerar QR Code Pix"
               )}
             </Button>
+
+            <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+              <Shield className="h-4 w-4 text-primary" />
+              <span>Pagamento seguro via Pix · Dados protegidos</span>
+            </div>
           </div>
         )}
 
@@ -299,10 +334,25 @@ export function PixPaymentModal({
               </div>
             </div>
 
-            <p className="text-xs text-center text-muted-foreground">
-              O código expira em 30 minutos. Sua assinatura será ativada
-              automaticamente após o pagamento.
-            </p>
+            {(() => {
+              const mins = Math.floor(secondsLeft / 60);
+              const secs = secondsLeft % 60;
+              const colorClass = secondsLeft <= 300 ? "text-destructive" : secondsLeft <= 900 ? "text-yellow-500" : "text-primary";
+              return (
+                <div className="w-full space-y-2">
+                  <div className="flex items-center justify-center gap-2">
+                    <Clock className={`h-4 w-4 ${colorClass}`} />
+                    <span className={`text-sm font-bold tabular-nums ${colorClass}`}>
+                      {String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}
+                    </span>
+                  </div>
+                  <Progress value={(secondsLeft / 1800) * 100} className="h-2" />
+                  <p className="text-xs text-center text-muted-foreground">
+                    Sua assinatura será ativada automaticamente após o pagamento.
+                  </p>
+                </div>
+              );
+            })()}
 
             <button
               onClick={handleClose}
