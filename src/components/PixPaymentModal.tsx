@@ -261,7 +261,8 @@ export function PixPaymentModal({
                   inputMode="numeric"
                   className="bg-background border-border/60"
                 />
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                  <ShieldCheck className="h-3.5 w-3.5 text-primary" />
                   Exigido pelo gateway de pagamento. Não armazenamos seus dados.
                 </p>
               </div>
@@ -281,6 +282,11 @@ export function PixPaymentModal({
                 "Gerar QR Code Pix"
               )}
             </Button>
+
+            <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+              <Shield className="h-4 w-4 text-primary" />
+              <span>Pagamento seguro via Pix · Dados protegidos</span>
+            </div>
           </div>
         )}
 
