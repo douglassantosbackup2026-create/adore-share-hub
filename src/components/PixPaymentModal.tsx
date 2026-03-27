@@ -87,6 +87,27 @@ export function PixPaymentModal({
     }
   }
 
+  function stopCountdown() {
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
+  }
+
+  function startCountdown() {
+    stopCountdown();
+    setSecondsLeft(1800);
+    countdownRef.current = setInterval(() => {
+      setSecondsLeft((prev) => {
+        if (prev <= 1) {
+          stopCountdown();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }
+
   useEffect(() => {
     return () => stopPolling();
   }, []);
