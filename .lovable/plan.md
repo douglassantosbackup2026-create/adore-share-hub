@@ -1,41 +1,44 @@
 
 
-## Corrigir pixel do criador no Meta Pixel Helper
+## Melhorar conversao no Feed e PixPaymentModal
 
-### Problema identificado
+### 1. Posts locked com contexto especifico (Feed.tsx)
 
-O hook `useCreatorPixel` esta implementado corretamente, mas ha dois problemas potenciais:
+**Problema**: Posts locked mostram apenas "Conteudo exclusivo" generico.
 
-1. **O hook so roda na pagina de perfil do criador** (`/creator/:id`). Se voce esta testando na pagina inicial (`/`), o pixel do criador nao sera inicializado.
+**Solucao**: Usar o `plansMap` ja disponivel para mostrar o nome do plano e preco diretamente no overlay do post locked. Adicionar frase de urgencia.
 
-2. **O `fbq('track', 'PageView')` generico pode nao estar associando corretamente ao pixel do criador**. O Meta Pixel Helper pode nao reconhecer o segundo pixel se ele for inicializado depois do carregamento da pagina sem um disparo especifico via `trackSingle`.
+Alterar o bloco locked (linhas 364-377) para:
+- Mostrar o nivel do plano necessario (ex: "Exclusivo para Fas" / "Super Fa" / "VIP")
+- Mostrar o preco (ex: "A partir de R$ 9,90/mes")
+- Adicionar badge de urgencia sutil ("Vagas limitadas" ou icone de fogo)
+- Botao com texto mais especifico: "Desbloquear por R$ X,XX/mes"
 
-### Solucao
+### 2. PixPaymentModal — selo de seguranca e countdown visual
 
-Atualizar o hook `useCreatorPixel` para:
+**Problema**: Formulario sem confianca visual; timer de 30min apenas em texto.
 
-- Usar `fbq('trackSingle', pixelId, 'PageView')` em vez de `fbq('track', 'PageView')` -- isso garante que o PageView seja disparado especificamente para o pixel do criador, forcando o Pixel Helper a reconhece-lo.
-- Adicionar um `console.log` temporario para depuracao, confirmando que o pixel esta sendo inicializado.
+**Solucao** no `PixPaymentModal.tsx`:
 
-### Mudancas
+**Step "form"**:
+- Adicionar selo de seguranca abaixo do botao: icone Shield + "Pagamento seguro via Pix · Dados protegidos"
+- Adicionar icones de confianca (Lock + ShieldCheck) junto ao disclaimer do CPF
 
-**1. `src/hooks/useCreatorPixel.ts`**
+**Step "pix"**:
+- Substituir o texto estatico "30 minutos" por um countdown visual usando `useState` + `useEffect` com `setInterval` de 1s
+- Exibir minutos:segundos em destaque com cor que muda (verde → amarelo → vermelho nos ultimos 5min)
+- Manter a barra de progresso visual (componente `Progress` ja existente)
 
-Atualizar o hook para usar `trackSingle`:
+### Arquivos modificados
 
-```typescript
-export function useCreatorPixel(pixelId: string | undefined) {
-  useEffect(() => {
-    if (!pixelId || !window.fbq) return;
-    window.fbq("init", pixelId);
-    window.fbq("trackSingle", pixelId, "PageView");
-  }, [pixelId]);
-}
-```
+| Arquivo | Mudanca |
+|---|---|
+| `src/pages/Feed.tsx` | Overlay de posts locked com plano/preco/urgencia |
+| `src/components/PixPaymentModal.tsx` | Selo seguranca + countdown visual de 30min |
 
-### Como testar
+### Detalhes tecnicos
 
-1. Acesse o perfil de um criador que tenha o pixel configurado (ex: Ana Julia - Bahia)
-2. O Meta Pixel Helper deve mostrar 2 pixels: o da plataforma (1688353905856977) e o do criador (4384406811885630)
-3. Ambos devem mostrar o evento PageView
+- **Feed locked overlay**: Usa `plansMap[post.creator.id]` para exibir `plan_name` e `price`. Map de labels: `{ fan: "Fas", superfan: "Super Fas", vip: "VIP" }`
+- **Countdown**: Estado `secondsLeft` inicializado em 1800 (30min), decrementado via `setInterval`. Limpar interval no cleanup. Usar `Progress` com `value={(secondsLeft/1800)*100}`
+- **Icones**: Importar `Shield`, `ShieldCheck`, `Clock`, `Flame` do lucide-react
 
