@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { Copy, Check, Loader2, X, Smartphone } from "lucide-react";
+import { Copy, Check, Loader2, X, Smartphone, Shield, ShieldCheck, Clock } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { sendMetaEvent } from "@/lib/metaCapi";

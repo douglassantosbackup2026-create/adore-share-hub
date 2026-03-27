@@ -361,20 +361,32 @@ const Feed = () => {
                     alt="Post"
                     className={`w-full aspect-[4/3] object-cover ${post.locked ? "blur-xl scale-105" : ""}`}
                   />
-                  {post.locked && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/40 backdrop-blur-sm">
-                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-primary shadow-glow">
-                        <Lock className="h-6 w-6 text-primary-foreground" />
+                  {post.locked && (() => {
+                    const plan = plansMap[post.creator.id];
+                    const planLabels: Record<string, string> = { fan: "Fãs", superfan: "Super Fãs", vip: "VIP" };
+                    const planLabel = plan ? (planLabels[plan.plan_name] ?? plan.plan_name) : "Assinantes";
+                    const price = plan?.price ?? 9.9;
+                    return (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/60 backdrop-blur-sm">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-primary shadow-glow">
+                          <Lock className="h-6 w-6 text-primary-foreground" />
+                        </div>
+                        <p className="text-sm font-semibold text-foreground">
+                          Exclusivo para {planLabel}
+                        </p>
+                        <div className="flex items-center gap-1.5 text-xs text-primary font-medium">
+                          <Flame className="h-3.5 w-3.5" />
+                          <span>Vagas limitadas</span>
+                        </div>
+                        <button
+                          onClick={() => handleSubscribeFromPost(post)}
+                          className="rounded-full bg-gradient-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-glow hover:scale-105 transition-transform"
+                        >
+                          Desbloquear por R$ {price.toFixed(2).replace(".", ",")}/mês
+                        </button>
                       </div>
-                      <p className="text-sm font-semibold text-foreground">Conteúdo exclusivo</p>
-                      <button
-                        onClick={() => handleSubscribeFromPost(post)}
-                        className="rounded-full bg-gradient-primary px-5 py-2 text-sm font-semibold text-primary-foreground shadow-glow hover:scale-105 transition-transform"
-                      >
-                        Assinar para ver
-                      </button>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               )}
 
