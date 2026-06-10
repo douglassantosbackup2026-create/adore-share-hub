@@ -1,6 +1,8 @@
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { Heart, Star, Lock, MessageCircle, Share2, ChevronLeft, Check, Zap, Users, UserPlus, UserCheck, Settings, Pencil, Trash2, FileText, Link2 } from "lucide-react";
+import { Heart, Star, Lock, MessageCircle, Share2, ChevronLeft, Check, Zap, Users, UserPlus, UserCheck, Settings, Pencil, Trash2, FileText, Link2, Video, Calendar, Radio } from "lucide-react";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import Navbar from "@/components/Navbar";
 import { useCreatorProfile } from "@/hooks/useCreatorProfile";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -22,6 +24,9 @@ import { useCreatorPixel } from "@/hooks/useCreatorPixel";
 import { getLoginPath } from "@/lib/authRedirect";
 import { normalizePlanName, PLAN_LABELS, PLAN_ORDER, planRank, getUpgradePriceDiff } from "@/lib/plans";
 import { trackConversion } from "@/lib/conversionEvents";
+import { useMeta } from "@/hooks/useMeta";
+import { useCreatorLives, useManageLives, getEmbedUrl } from "@/hooks/useCreatorLives";
+import { ScheduleLiveModal } from "@/components/ScheduleLiveModal";
 
 
 const defaultPlans = [
@@ -68,6 +73,7 @@ const CreatorProfile = () => {
   const [selectedPlan, setSelectedPlan] = useState(0);
   const [pixModalOpen, setPixModalOpen] = useState(false);
   const [tipModalOpen, setTipModalOpen] = useState(false);
+  const [scheduleLiveOpen, setScheduleLiveOpen] = useState(false);
 
   // Capture ref code from URL
   useEffect(() => {
@@ -76,6 +82,20 @@ const CreatorProfile = () => {
       sessionStorage.setItem("affiliate_ref", ref);
     }
   }, [searchParams]);
+
+  // Auto-open PIX modal when redirected back after login with ?openSubscribe=1
+  useEffect(() => {
+    const open = searchParams.get("openSubscribe");
+    if (open === "1" && user && !authLoading && realProfile) {
+      setPixModalOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete("openSubscribe");
+      navigate(
+        `/creator/${id}${next.toString() ? `?${next.toString()}` : ""}`,
+        { replace: true }
+      );
+    }
+  }, [searchParams, user, authLoading, realProfile]);
 
   // Affiliate link management
   const { links: affiliateLinks, createLink: createAffiliateLink } = useAffiliateLinks(id);
@@ -206,6 +226,22 @@ const CreatorProfile = () => {
     }
   }, [realProfile?.id, id]);
 
+  // SEO — must be before any early return (React rules of hooks)
+  useMeta({
+    title: realProfile ? `${realProfile.name} (@${realProfile.handle ?? "criador"})` : undefined,
+    description: (realProfile as any)?.bio
+      ? String((realProfile as any).bio).slice(0, 160)
+      : realProfile
+        ? `Assine ${realProfile.name} na Flare e acesse conteúdo exclusivo.`
+        : undefined,
+    image: realProfile?.avatar_url ?? undefined,
+    url: `${window.location.origin}/creator/${id}`,
+  });
+
+  // Lives
+  const { data: lives = [] } = useCreatorLives(id);
+  const { remove: removeLive, update: updateLive } = useManageLives(isOwner ? id : undefined);
+
   // If no real profile found, show 404
   if (!realProfile) {
     return (
@@ -260,9 +296,16 @@ const CreatorProfile = () => {
     minPlan: post.min_plan,
   }));
 
+  const filteredPosts =
+    activeTab === "Fotos"
+      ? displayPosts.filter((p) => p.type === "photo")
+      : activeTab === "Vídeos"
+        ? displayPosts.filter((p) => p.type === "video")
+        : displayPosts;
+
   const handleLockedPostClick = (minPlan: string) => {
     if (!user) {
-      navigate(getLoginPath(`/creator/${id}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`));
+      navigate(getLoginPath(`/creator/${id}?openSubscribe=1`));
       return;
     }
     if (!hasAccessTo(minPlan)) {
@@ -307,7 +350,7 @@ const CreatorProfile = () => {
 
   const handleSubscribe = () => {
     if (!user) {
-      toast.error("Faça login para assinar");
+      navigate(getLoginPath(`/creator/${id}?openSubscribe=1`));
       return;
     }
     if (isSubscribed) {
@@ -487,7 +530,172 @@ const CreatorProfile = () => {
               ))}
             </div>
 
-            {authLoading ? (
+            {activeTab === "Lives" ? (
+              /* Lives tab */
+              <div className="space-y-4">
+                {isOwner && (
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => setScheduleLiveOpen(true)}
+                      className="flex items-center gap-1.5 rounded-full bg-gradient-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-glow hover:scale-105 transition-transform"
+                    >
+                      <Video className="h-3.5 w-3.5" />
+                      Agendar Live
+                    </button>
+                  </div>
+                )}
+
+                {lives.length === 0 ? (
+                  <div className="flex flex-col items-center gap-3 py-14 text-center border border-dashed border-border/50 rounded-2xl">
+                    <Video className="h-10 w-10 text-muted-foreground/30" />
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Nenhuma live por aqui ainda</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {isOwner ? "Agende sua primeira live e avise seus fãs." : `${creator.name} ainda não agendou nenhuma live.`}
+                      </p>
+                    </div>
+                    {isOwner && (
+                      <button
+                        onClick={() => setScheduleLiveOpen(true)}
+                        className="rounded-full bg-gradient-primary px-5 py-2 text-sm font-bold text-primary-foreground shadow-glow hover:scale-105 transition-transform mt-1"
+                      >
+                        Agendar agora
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  lives.map((live) => {
+                    const canView = live.min_plan === "free" || (!!user && hasAccessTo(live.min_plan));
+                    const embedUrl = live.stream_url ? getEmbedUrl(live.stream_url) : null;
+                    const isLive = live.status === "live";
+                    const isScheduled = live.status === "scheduled";
+                    const isEnded = live.status === "ended";
+
+                    return (
+                      <div
+                        key={live.id}
+                        className={`rounded-2xl border overflow-hidden ${isLive ? "border-red-500/40" : "border-border/50"}`}
+                      >
+                        {/* Header */}
+                        <div className={`flex items-start gap-3 p-4 ${isLive ? "bg-red-500/5" : "bg-card"}`}>
+                          <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${isLive ? "bg-red-500/20" : isScheduled ? "bg-primary/10" : "bg-muted/40"}`}>
+                            {isLive ? (
+                              <Radio className="h-4 w-4 text-red-400" />
+                            ) : isScheduled ? (
+                              <Calendar className="h-4 w-4 text-primary" />
+                            ) : (
+                              <Video className="h-4 w-4 text-muted-foreground" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-sm font-semibold text-foreground">{live.title}</p>
+                              {isLive && (
+                                <span className="flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold text-red-400">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
+                                  AO VIVO
+                                </span>
+                              )}
+                              {isEnded && (
+                                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Encerrada</span>
+                              )}
+                            </div>
+                            {live.description && (
+                              <p className="text-xs text-muted-foreground mt-0.5">{live.description}</p>
+                            )}
+                            {live.scheduled_at && (
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {isScheduled
+                                  ? `Agendada para ${format(new Date(live.scheduled_at), "d 'de' MMMM 'às' HH:mm", { locale: ptBR })}`
+                                  : isLive
+                                    ? "Ao vivo agora"
+                                    : `Encerrada em ${format(new Date(live.scheduled_at), "d 'de' MMMM", { locale: ptBR })}`}
+                              </p>
+                            )}
+                            <p className="text-[10px] text-muted-foreground mt-1">
+                              {live.min_plan === "free" ? "🌐 Todos" : live.min_plan === "fan" ? "💖 Fãs" : live.min_plan === "superfan" ? "🔥 Super Fãs" : "💎 VIP"}
+                            </p>
+                          </div>
+                          {isOwner && (
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              {isScheduled && (
+                                <button
+                                  onClick={() => updateLive.mutate({ id: live.id, status: "live" })}
+                                  className="rounded-lg bg-red-500/90 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-red-500 transition-colors"
+                                >
+                                  Iniciar
+                                </button>
+                              )}
+                              {isLive && (
+                                <button
+                                  onClick={() => updateLive.mutate({ id: live.id, status: "ended" })}
+                                  className="rounded-lg bg-muted px-2.5 py-1 text-[11px] font-semibold text-foreground hover:bg-muted/80 transition-colors"
+                                >
+                                  Encerrar
+                                </button>
+                              )}
+                              <button
+                                onClick={() => removeLive.mutate(live.id)}
+                                className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-destructive transition-colors"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Player / locked state */}
+                        {isLive && (
+                          canView ? (
+                            embedUrl ? (
+                              <div className="aspect-video w-full bg-black">
+                                <iframe
+                                  src={embedUrl}
+                                  className="h-full w-full"
+                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                  allowFullScreen
+                                />
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-center gap-2 py-8 bg-muted/20 text-center">
+                                <Radio className="h-8 w-8 text-red-400 animate-pulse" />
+                                <p className="text-sm font-medium text-foreground">Live em andamento</p>
+                                {live.stream_url && (
+                                  <a
+                                    href={live.stream_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-primary hover:underline"
+                                  >
+                                    Abrir link da live →
+                                  </a>
+                                )}
+                              </div>
+                            )
+                          ) : (
+                            <div className="flex flex-col items-center gap-3 py-10 bg-muted/20 text-center">
+                              <Lock className="h-8 w-8 text-primary" />
+                              <div>
+                                <p className="text-sm font-semibold text-foreground">Live exclusiva</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  Assine o plano {live.min_plan === "fan" ? "Fã" : live.min_plan === "superfan" ? "Super Fã" : "VIP"} para assistir.
+                                </p>
+                              </div>
+                              <button
+                                onClick={handleSubscribe}
+                                className="rounded-full bg-gradient-primary px-5 py-2 text-sm font-bold text-primary-foreground shadow-glow hover:scale-105 transition-transform"
+                              >
+                                Desbloquear agora
+                              </button>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            ) : authLoading ? (
               /* Auth still hydrating — render nothing to avoid flash */
               <div className="grid grid-cols-3 gap-2 select-none pointer-events-none opacity-20">
                 {Array.from({ length: 9 }).map((_, i) => (
@@ -592,13 +800,13 @@ const CreatorProfile = () => {
                   </div>
                 );
               })()
-            ) : displayPosts.length === 0 ? (
+            ) : filteredPosts.length === 0 ? (
               <div className="col-span-3 py-16 text-center text-muted-foreground">
                 <p className="text-sm">Nenhum post publicado ainda.</p>
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-2">
-                {displayPosts.map((post) => (
+                {filteredPosts.map((post) => (
                   <div
                     key={post.id}
                     onClick={post.locked ? () => handleLockedPostClick(post.minPlan) : undefined}
@@ -606,12 +814,20 @@ const CreatorProfile = () => {
                   >
                     {post.locked ? (
                       <>
-                        <div className="h-full w-full bg-gradient-to-br from-muted to-secondary blur-sm" />
-                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-background/70 backdrop-blur-sm border border-border/60">
+                        {post.mediaUrl ? (
+                          <img
+                            src={post.mediaUrl}
+                            alt=""
+                            className="h-full w-full object-cover blur-xl scale-110"
+                          />
+                        ) : (
+                          <div className="h-full w-full bg-gradient-to-br from-primary/15 to-secondary/20" />
+                        )}
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/40 backdrop-blur-[2px]">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-background/80 backdrop-blur-sm border border-border/60">
                             <Lock className="h-4 w-4 text-primary" />
                           </div>
-                          <p className="text-[10px] font-medium text-foreground/80">Conteúdo exclusivo</p>
+                          <p className="text-[10px] font-semibold text-foreground">Exclusivo</p>
                         </div>
                       </>
                     ) : (
@@ -838,6 +1054,14 @@ const CreatorProfile = () => {
             creatorAccessToken={creatorAccessToken}
           />
         </>
+      )}
+
+      {isOwner && (
+        <ScheduleLiveModal
+          open={scheduleLiveOpen}
+          onClose={() => setScheduleLiveOpen(false)}
+          creatorId={id!}
+        />
       )}
 
       {/* Edit post modal */}

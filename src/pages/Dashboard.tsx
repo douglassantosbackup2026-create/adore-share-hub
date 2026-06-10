@@ -1,8 +1,9 @@
 import { useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import {
-  DollarSign, Users, FileImage, Star, TrendingUp, Upload, Bell, Settings,
-  ArrowUpRight, ArrowDownRight, Plus, Eye, X
+  DollarSign, Users, FileImage, TrendingUp, Upload, Bell, Settings,
+  ArrowUpRight, ArrowDownRight, Plus, Eye, X, BarChart3, Repeat2,
+  Video, Calendar, Trash2
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from "@/components/ui/dialog";
+import { ScheduleLiveModal } from "@/components/ScheduleLiveModal";
+import { useCreatorLives, useManageLives } from "@/hooks/useCreatorLives";
+import { formatDistanceToNow, format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 const planColors: Record<string, string> = {
   "Fã": "bg-muted/50 text-muted-foreground",
@@ -39,45 +44,59 @@ const Dashboard = () => {
   const [previewFile, setPreviewFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [liveModalOpen, setLiveModalOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const { data: lives = [] } = useCreatorLives(user?.id);
+  const { remove: removeLive, update: updateLive } = useManageLives(user?.id);
+
+  const upcomingLives = lives.filter((l) => l.status !== "ended");
+  const endedLives = lives.filter((l) => l.status === "ended");
 
   const displayName = profile?.name || "Criador";
 
   const recentSubscribers = dashStats?.recentSubscribers ?? [];
+  const planBreakdown = dashStats?.planBreakdown ?? {};
+  const totalSubs = dashStats?.subscriberCount ?? 0;
+
+  const PLAN_DISPLAY: Record<string, { label: string; color: string }> = {
+    fan: { label: "Fã", color: "bg-primary/60" },
+    superfan: { label: "Super Fã", color: "bg-primary" },
+    vip: { label: "VIP", color: "bg-amber-400" },
+  };
 
   const stats = [
     {
       label: "Receita Líquida",
-      value: dashStats ? `R$ ${dashStats.revenue.toLocaleString("pt-BR")}` : "R$ 0",
-      change: "",
+      value: dashStats ? `R$ ${dashStats.revenue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "R$ 0,00",
+      sub: "após taxa de 20%",
       up: true,
       icon: DollarSign,
       color: "text-green-400",
-      note: "após taxa de 20%",
+    },
+    {
+      label: "MRR Bruto",
+      value: dashStats ? `R$ ${dashStats.mrr.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "R$ 0,00",
+      sub: "receita mensal recorrente",
+      up: true,
+      icon: Repeat2,
+      color: "text-emerald-400",
     },
     {
       label: "Assinantes",
       value: dashStats ? dashStats.subscriberCount.toLocaleString("pt-BR") : "0",
-      change: "",
-      up: true,
+      sub: dashStats ? `${dashStats.churnRate.toFixed(1)}% churn/mês` : "—",
+      up: (dashStats?.churnRate ?? 0) < 10,
       icon: Users,
       color: "text-primary",
     },
     {
       label: "Posts",
       value: dashStats ? dashStats.postCount.toString() : "0",
-      change: "",
+      sub: "publicados",
       up: true,
       icon: FileImage,
       color: "text-blue-400",
-    },
-    {
-      label: "Avaliação Média",
-      value: "—",
-      change: "",
-      up: true,
-      icon: Star,
-      color: "text-amber-400",
     },
   ];
 
@@ -145,6 +164,13 @@ const Dashboard = () => {
             <p className="text-muted-foreground mt-1">Aqui está o resumo da sua conta</p>
           </div>
           <div className="flex items-center gap-3">
+            <Button
+              onClick={() => setLiveModalOpen(true)}
+              className="hidden sm:flex items-center gap-2 rounded-full bg-gradient-primary text-primary-foreground shadow-glow hover:scale-105 transition-transform text-sm px-4 h-9"
+            >
+              <Video className="h-3.5 w-3.5" />
+              Agendar Live
+            </Button>
             <button className="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 text-muted-foreground hover:text-foreground transition-colors">
               <Bell className="h-4 w-4" />
             </button>
@@ -162,9 +188,6 @@ const Dashboard = () => {
             <div key={stat.label} className="glass-card rounded-2xl p-5 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">{stat.label}</span>
-                {"note" in stat && (stat as any).note && (
-                  <span className="text-[10px] text-muted-foreground/70 block">{(stat as any).note}</span>
-                )}
                 <div className={`flex h-8 w-8 items-center justify-center rounded-full bg-muted/30 ${stat.color}`}>
                   <stat.icon className="h-4 w-4" />
                 </div>
@@ -176,8 +199,7 @@ const Dashboard = () => {
                 ) : (
                   <ArrowDownRight className="h-3 w-3 text-red-400" />
                 )}
-                <span className={stat.up ? "text-green-400" : "text-red-400"}>{stat.change}</span>
-                <span className="text-muted-foreground">vs mês anterior</span>
+                <span className="text-muted-foreground">{stat.sub}</span>
               </div>
             </div>
           ))}
@@ -216,24 +238,147 @@ const Dashboard = () => {
             </ResponsiveContainer>
           </div>
 
-          {/* Recent subscribers */}
-          <div className="glass-card rounded-2xl p-6 flex flex-col gap-4">
-            <h2 className="font-semibold text-foreground">Novos Assinantes</h2>
-            <div className="flex flex-col gap-3">
-              {recentSubscribers.map((sub, i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <img src={sub.avatar} alt={sub.name} className="h-9 w-9 rounded-full object-cover flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{sub.name}</p>
-                    <p className="text-xs text-muted-foreground">{sub.since}</p>
+          {/* Plan breakdown + recent subscribers */}
+          <div className="glass-card rounded-2xl p-6 flex flex-col gap-5">
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <BarChart3 className="h-4 w-4 text-primary" />
+                <h2 className="font-semibold text-foreground">Distribuição por Plano</h2>
+              </div>
+              {totalSubs === 0 ? (
+                <p className="text-xs text-muted-foreground">Nenhum assinante ainda.</p>
+              ) : (
+                <div className="flex flex-col gap-2.5">
+                  {Object.entries(PLAN_DISPLAY).map(([key, { label, color }]) => {
+                    const count = planBreakdown[key] ?? 0;
+                    const pct = totalSubs > 0 ? (count / totalSubs) * 100 : 0;
+                    return (
+                      <div key={key}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-muted-foreground">{label}</span>
+                          <span className="text-xs font-semibold text-foreground">{count} ({pct.toFixed(0)}%)</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${color} transition-all duration-500`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-border/40 pt-4">
+              <h3 className="text-sm font-semibold text-foreground mb-3">Novos Assinantes</h3>
+              <div className="flex flex-col gap-2.5">
+                {recentSubscribers.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Nenhum assinante recente.</p>
+                ) : recentSubscribers.map((sub, i) => (
+                  <div key={i} className="flex items-center gap-2.5">
+                    <img src={sub.avatar || "/placeholder.svg"} alt={sub.name} className="h-8 w-8 rounded-full object-cover flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-foreground truncate">{sub.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{sub.since}</p>
+                    </div>
+                    <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 flex-shrink-0 ${planColors[sub.plan] || "bg-muted/50 text-muted-foreground"}`}>
+                      {sub.plan}
+                    </span>
                   </div>
-                  <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 flex-shrink-0 ${planColors[sub.plan] || "bg-muted/50 text-muted-foreground"}`}>
-                    {sub.plan}
-                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Lives section */}
+        <div className="glass-card rounded-2xl p-6">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-2">
+              <Video className="h-4 w-4 text-primary" />
+              <h2 className="font-semibold text-foreground">Suas Lives</h2>
+              {upcomingLives.some((l) => l.status === "live") && (
+                <span className="flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold text-red-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
+                  AO VIVO
+                </span>
+              )}
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setLiveModalOpen(true)}
+              className="rounded-full bg-gradient-primary text-primary-foreground shadow-glow hover:scale-105 transition-transform text-xs px-3 h-8 gap-1.5"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Agendar
+            </Button>
+          </div>
+
+          {upcomingLives.length === 0 && endedLives.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-10 text-center border border-dashed border-border/50 rounded-xl">
+              <Video className="h-10 w-10 text-muted-foreground/30" />
+              <div>
+                <p className="text-sm font-medium text-foreground">Nenhuma live agendada</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Agende uma live e avise seus fãs com antecedência.</p>
+              </div>
+              <Button size="sm" onClick={() => setLiveModalOpen(true)} className="rounded-full bg-gradient-primary text-primary-foreground text-xs px-4 h-8 mt-1">
+                Agendar live
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {upcomingLives.map((live) => (
+                <div key={live.id} className={`flex items-start gap-3 rounded-xl border p-3.5 ${live.status === "live" ? "border-red-500/30 bg-red-500/5" : "border-border/50 bg-muted/20"}`}>
+                  <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${live.status === "live" ? "bg-red-500/20" : "bg-muted/40"}`}>
+                    {live.status === "live" ? (
+                      <span className="h-2.5 w-2.5 rounded-full bg-red-400 animate-pulse" />
+                    ) : (
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground leading-tight">{live.title}</p>
+                    {live.scheduled_at && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {live.status === "live"
+                          ? "Ao vivo agora"
+                          : format(new Date(live.scheduled_at), "d MMM 'às' HH:mm", { locale: ptBR })}
+                      </p>
+                    )}
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {live.min_plan === "free" ? "🌐 Todos" : live.min_plan === "fan" ? "💖 Fãs" : live.min_plan === "superfan" ? "🔥 Super Fãs" : "💎 VIP"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {live.status === "scheduled" && (
+                      <button
+                        onClick={() => updateLive.mutate({ id: live.id, status: "live" })}
+                        className="rounded-lg bg-red-500/90 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-red-500 transition-colors"
+                      >
+                        Iniciar
+                      </button>
+                    )}
+                    {live.status === "live" && (
+                      <button
+                        onClick={() => updateLive.mutate({ id: live.id, status: "ended" })}
+                        className="rounded-lg bg-muted px-2.5 py-1 text-[11px] font-semibold text-foreground hover:bg-muted/80 transition-colors"
+                      >
+                        Encerrar
+                      </button>
+                    )}
+                    <button
+                      onClick={() => removeLive.mutate(live.id)}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-destructive transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
+          )}
         </div>
 
         {/* Upload new content */}
@@ -288,6 +433,14 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
+
+      {user && (
+        <ScheduleLiveModal
+          open={liveModalOpen}
+          onClose={() => setLiveModalOpen(false)}
+          creatorId={user.id}
+        />
+      )}
 
       {/* Preview Modal */}
       <Dialog open={previewOpen} onOpenChange={(open) => { if (!open) closePreview(); }}>

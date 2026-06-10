@@ -4,6 +4,7 @@ import Navbar from "@/components/Navbar";
 import CreatorCard from "@/components/CreatorCard";
 import CreatorCardSkeleton from "@/components/CreatorCardSkeleton";
 import { useCreators } from "@/hooks/useCreators";
+import { useMeta } from "@/hooks/useMeta";
 
 const categories = ["Todos", "Fitness", "Arte", "Gastronomia", "Música", "Educação", "Lifestyle", "Moda", "Gaming"];
 
@@ -13,6 +14,11 @@ const Discover = () => {
   const [sortBy, setSortBy] = useState<"popular" | "preco" | "novo">("popular");
 
   const { data: creators = [], isLoading } = useCreators();
+
+  useMeta({
+    title: "Descobrir Criadores",
+    description: "Explore criadores exclusivos na Flare. Assine e acesse conteúdo privado, fotos, vídeos e lives com pagamento via Pix.",
+  });
 
   const filtered = creators
     .filter((c) => {

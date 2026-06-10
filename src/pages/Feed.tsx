@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useFollow } from "@/hooks/useFollow";
 import { Link } from "react-router-dom";
 import { Heart, MessageCircle, Share2, Lock, MoreHorizontal, Bookmark, Send, Loader2, Flame } from "lucide-react";
@@ -21,6 +21,7 @@ import { ptBR } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { avatarUrl, thumbUrl } from "@/lib/imageTransform";
 
 interface PixModalState {
   creatorId: string;
@@ -154,7 +155,23 @@ function SuggestionItem({ creator }: { creator: { id: string | number; name: str
 }
 
 const Feed = () => {
-  const { posts: realPosts, likePost, isLoading: postsLoading } = usePosts();
+  const { posts: realPosts, likePost, isLoading: postsLoading, isFetchingNextPage, hasNextPage, fetchNextPage } = usePosts();
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { threshold: 0.1 }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
   const { data: realCreators, isLoading: creatorsLoading } = useCreators();
   const { data: prefCategories = [] } = useFanPreferences();
 
@@ -221,8 +238,7 @@ const Feed = () => {
 
   const handleSubscribeFromPost = (post: typeof feedPosts[number] & { min_plan?: string }) => {
     if (!user) {
-      const returnTo = window.location.pathname;
-      window.location.href = getLoginPath(returnTo);
+      window.location.href = getLoginPath(`/creator/${post.creator.id}?openSubscribe=1`);
       return;
     }
     const creatorPlans = plansByCreator[post.creator.id] ?? [];
@@ -241,7 +257,7 @@ const Feed = () => {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <div className="container max-w-6xl pt-24 pb-16 flex gap-8">
+      <div className="container max-w-6xl pt-24 pb-24 md:pb-16 flex gap-8">
         <div className="flex-1 min-w-0 flex flex-col gap-6">
           <RenewalBanner />
           <div className="glass-card rounded-2xl p-4">
@@ -258,7 +274,7 @@ const Feed = () => {
                       <div className="relative">
                         <div className="h-16 w-16 rounded-full p-0.5 bg-gradient-primary shadow-glow">
                           <img
-                            src={(creator as any).avatar_url || (creator as any).avatar || "/placeholder.svg"}
+                            src={avatarUrl((creator as any).avatar_url || (creator as any).avatar, 64)}
                             alt={creator.name}
                             className="h-full w-full rounded-full object-cover border-2 border-background"
                           />
@@ -320,10 +336,10 @@ const Feed = () => {
                 <p className="px-4 pb-3 text-sm text-foreground">{post.text}</p>
               )}
 
-              {post.image && (
+              {post.image ? (
                 <div className="relative">
                   <img
-                    src={post.image}
+                    src={post.locked ? post.image : thumbUrl(post.image)}
                     alt="Post"
                     className={`w-full aspect-[4/3] object-cover ${post.locked ? "blur-xl scale-105" : ""}`}
                   />
@@ -355,7 +371,31 @@ const Feed = () => {
                     );
                   })()}
                 </div>
-              )}
+              ) : post.locked ? (() => {
+                const minPlan = (post as { min_plan?: string }).min_plan ?? "fan";
+                const creatorPlans = plansByCreator[post.creator.id] ?? [];
+                const plan = getCheapestPlanForMin(creatorPlans, minPlan) ?? creatorPlans[0];
+                const planLabel = PLAN_LABELS[minPlan] ? `${PLAN_LABELS[minPlan]}s` : "Assinantes";
+                const price = plan?.price ?? 9.9;
+                return (
+                  <div className="relative aspect-[4/3] bg-gradient-to-br from-primary/10 via-secondary/10 to-primary/5 flex flex-col items-center justify-center gap-3">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-primary shadow-glow">
+                      <Lock className="h-6 w-6 text-primary-foreground" />
+                    </div>
+                    <p className="text-sm font-semibold text-foreground">Exclusivo para {planLabel}</p>
+                    <div className="flex items-center gap-1.5 text-xs text-primary font-medium">
+                      <Flame className="h-3.5 w-3.5" />
+                      <span>Conteúdo bloqueado</span>
+                    </div>
+                    <button
+                      onClick={() => handleSubscribeFromPost(post)}
+                      className="rounded-full bg-gradient-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-glow hover:scale-105 transition-transform"
+                    >
+                      Desbloquear por R$ {price.toFixed(2).replace(".", ",")}/mês
+                    </button>
+                  </div>
+                );
+              })() : null}
 
               <div className="flex items-center justify-between p-4">
                 <div className="flex items-center gap-4">
@@ -371,7 +411,7 @@ const Feed = () => {
                     className={`flex items-center gap-1.5 text-sm transition-colors ${openComments.has(post.id) ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
                   >
                     <MessageCircle className={`h-5 w-5 ${openComments.has(post.id) ? "fill-primary/20" : ""}`} />
-                    <span>{useReal ? (openComments.has(post.id) ? "−" : "+") : String(post.comments)}</span>
+                    <span>{openComments.has(post.id) ? "−" : "+"}</span>
                   </button>
                   <button
                     onClick={() => {
@@ -393,12 +433,22 @@ const Feed = () => {
                 </button>
               </div>
 
-              {/* Comments section — only for real posts */}
-              {useReal && openComments.has(post.id) && (
+              {openComments.has(post.id) && (
                 <CommentSection postId={post.id} />
               )}
             </div>
           ))}
+
+          {/* Infinite scroll sentinel */}
+          <div ref={sentinelRef} className="h-4" />
+          {isFetchingNextPage && (
+            <div className="flex justify-center py-6">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          )}
+          {!hasNextPage && realPosts.length > 0 && !postsLoading && (
+            <p className="text-center text-xs text-muted-foreground py-6">Você chegou ao fim do feed.</p>
+          )}
         </div>
 
 

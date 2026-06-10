@@ -25,6 +25,12 @@
     <meta property="og:description" content="A plataforma que conecta criadores de conteúdo com seus fãs. Assinaturas, conteúdo exclusivo e pagamentos diretos." />
     <meta name="twitter:description" content="A plataforma que conecta criadores de conteúdo com seus fãs. Assinaturas, conteúdo exclusivo e pagamentos diretos." />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#e8467c" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Flare" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
     <meta name="facebook-domain-verification" content="wpl4l0axxs6p3sp2a3mf19ujcuttkw" />
 
     <!-- Meta Pixel Code -->
@@ -54,5 +60,12 @@
     </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/sw.js");
+        });
+      }
+    </script>
   </body>
 </html>

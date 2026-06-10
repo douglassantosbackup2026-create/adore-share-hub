@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Heart, Lock, Star } from "lucide-react";
+import { avatarUrl, coverUrl } from "@/lib/imageTransform";
 
 export interface Creator {
   id: number | string;
@@ -31,7 +32,7 @@ const CreatorCard = ({ creator }: CreatorCardProps) => {
       {/* Cover */}
       <div className="relative h-36 overflow-hidden">
         <img
-          src={creator.cover}
+          src={coverUrl(creator.cover_url ?? creator.cover)}
           alt={creator.name}
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
         />
@@ -51,7 +52,7 @@ const CreatorCard = ({ creator }: CreatorCardProps) => {
       {/* Avatar */}
       <div className="relative px-4">
         <div className="absolute -top-7 left-4 h-14 w-14 rounded-full border-2 border-primary/60 overflow-hidden bg-muted ring-2 ring-background shadow-glow">
-          <img src={creator.avatar} alt={creator.name} className="h-full w-full object-cover" />
+          <img src={avatarUrl(creator.avatar_url ?? creator.avatar, 56)} alt={creator.name} className="h-full w-full object-cover" />
         </div>
         {creator.verified && (
           <div className="absolute -top-2 left-14 flex h-5 w-5 items-center justify-center rounded-full bg-gradient-primary">

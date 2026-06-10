@@ -5,6 +5,7 @@ import CreatorCard from "@/components/CreatorCard";
 import Navbar from "@/components/Navbar";
 import { useFeaturedCreators } from "@/hooks/useFeaturedCreators";
 import { usePlatformStats } from "@/hooks/usePlatformStats";
+import { useMeta } from "@/hooks/useMeta";
 
 const features = [
   {
@@ -42,6 +43,11 @@ const features = [
 const Index = () => {
   const { data: featured = [] } = useFeaturedCreators();
   const { data: platformStats } = usePlatformStats();
+
+  useMeta({
+    title: "Monetize seu conteúdo exclusivo",
+    description: "A plataforma brasileira que conecta criadores com seus fãs. Assinaturas, conteúdo exclusivo e pagamentos instantâneos via Pix.",
+  });
 
   const stats = [
     { value: String(platformStats?.total_creators ?? 0), label: "Criadores ativos" },

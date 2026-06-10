@@ -7,6 +7,8 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useConversations } from "@/hooks/useConversations";
 import SearchDialog from "@/components/SearchDialog";
+import NotificationBell from "@/components/NotificationBell";
+import { avatarUrl } from "@/lib/imageTransform";
 
 const Navbar = () => {
   const [open, setOpen] = useState(false);
@@ -106,6 +108,8 @@ const Navbar = () => {
             <Search className="h-4 w-4" />
           </button>
 
+          {loggedIn && <NotificationBell />}
+
           {loggedIn ? (
             <div className="relative" ref={dropdownRef}>
               <button
@@ -113,7 +117,7 @@ const Navbar = () => {
                 className="h-9 w-9 rounded-full bg-gradient-primary shadow-glow flex items-center justify-center hover:scale-105 transition-transform overflow-hidden"
               >
                 {profile?.avatar_url ? (
-                  <img src={profile.avatar_url} alt="" className="h-full w-full object-cover rounded-full" />
+                  <img src={avatarUrl(profile.avatar_url, 36)} alt="" className="h-full w-full object-cover rounded-full" />
                 ) : (
                   <User className="h-4 w-4 text-primary-foreground" />
                 )}
@@ -176,57 +180,43 @@ const Navbar = () => {
           )}
         </div>
 
-        <button className="md:hidden text-muted-foreground" onClick={() => setOpen(!open)}>
-          {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-        </button>
+        {/* Logged-in mobile: search + notifications (BottomNav handles main navigation) */}
+        {loggedIn ? (
+          <div className="md:hidden flex items-center gap-2">
+            <NotificationBell />
+            <button
+              onClick={() => setSearchOpen(true)}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Search className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <button className="md:hidden text-muted-foreground" onClick={() => setOpen(!open)}>
+            {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </button>
+        )}
       </div>
 
-      {open && (
+      {/* Guest mobile menu */}
+      {open && !loggedIn && (
         <div className="md:hidden border-t border-border/50 bg-background/95 backdrop-blur-xl px-6 py-4 flex flex-col gap-4">
           {navLinks.map(({ label, to }) => (
-            <Link key={to} to={to} onClick={() => setOpen(false)} className="text-sm font-medium text-foreground flex items-center gap-2">
+            <Link key={to} to={to} onClick={() => setOpen(false)} className="text-sm font-medium text-foreground">
               {label}
-              {to === "/messages" && unreadMessages > 0 && (
-                <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
-                  {unreadMessages > 9 ? "9+" : unreadMessages}
-                </span>
-              )}
             </Link>
           ))}
           <div className="flex flex-col gap-2 pt-2 border-t border-border/50">
-            {loggedIn ? (
-              <>
-                <Link to={profilePath} onClick={() => setOpen(false)} className="text-sm font-medium text-foreground">
-                  Meu perfil
-                </Link>
-                {!isCreator && (
-                  <Link to="/subscriptions" onClick={() => setOpen(false)} className="text-sm font-medium text-foreground">
-                    Assinaturas
-                  </Link>
-                )}
-                {isCreator && (
-                  <Link to="/settings" onClick={() => setOpen(false)} className="text-sm font-medium text-foreground">
-                    Configurações
-                  </Link>
-                )}
-                <button onClick={handleSignOut} className="text-sm text-left font-medium text-muted-foreground">
-                  Sair
-                </button>
-              </>
-            ) : (
-              <>
-                <Link to="/login" onClick={() => setOpen(false)} className="text-sm font-medium text-foreground">
-                  Entrar
-                </Link>
-                <Link
-                  to="/signup"
-                  onClick={() => setOpen(false)}
-                  className="flex items-center justify-center gap-2 rounded-full bg-gradient-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
-                >
-                  Criar conta
-                </Link>
-              </>
-            )}
+            <Link to="/login" onClick={() => setOpen(false)} className="text-sm font-medium text-foreground">
+              Entrar
+            </Link>
+            <Link
+              to="/signup"
+              onClick={() => setOpen(false)}
+              className="flex items-center justify-center gap-2 rounded-full bg-gradient-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+            >
+              Criar conta
+            </Link>
           </div>
         </div>
       )}

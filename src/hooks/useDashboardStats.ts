@@ -11,36 +11,52 @@ export function useDashboardStats() {
     enabled: !!user,
     queryFn: async () => {
       const userId = user!.id;
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-      // Active subscriptions for this creator
-      const { data: subs } = await supabase
-        .from("subscriptions")
-        .select("id, plan, fan_id, created_at")
-        .eq("creator_id", userId)
-        .eq("active", true);
+      const [subsResult, plansResult, postCountResult, churnedResult] = await Promise.all([
+        supabase
+          .from("subscriptions")
+          .select("id, plan, fan_id, created_at")
+          .eq("creator_id", userId)
+          .eq("active", true),
+        supabase
+          .from("creator_plans")
+          .select("plan_name, price")
+          .eq("creator_id", userId),
+        supabase
+          .from("posts")
+          .select("*", { count: "exact", head: true })
+          .eq("creator_id", userId),
+        supabase
+          .from("subscriptions")
+          .select("id")
+          .eq("creator_id", userId)
+          .eq("active", false)
+          .gte("expires_at", thirtyDaysAgo),
+      ]);
 
-      // Plans for price lookup
-      const { data: plans } = await supabase
-        .from("creator_plans")
-        .select("plan_name, price")
-        .eq("creator_id", userId);
+      const subs = subsResult.data ?? [];
+      const plans = plansResult.data ?? [];
+      const churnedCount = churnedResult.data?.length ?? 0;
 
       const planPriceMap = new Map<string, number>();
-      plans?.forEach((p) => planPriceMap.set(p.plan_name, p.price));
+      plans.forEach((p) => planPriceMap.set(p.plan_name, p.price));
 
-      const grossRevenue = (subs ?? []).reduce((sum, s) => {
-        return sum + (planPriceMap.get(s.plan) ?? 0);
-      }, 0);
+      const grossRevenue = subs.reduce((sum, s) => sum + (planPriceMap.get(s.plan) ?? 0), 0);
       const revenue = grossRevenue * (1 - PLATFORM_FEE_RATE);
 
-      // Post count
-      const { count: postCount } = await supabase
-        .from("posts")
-        .select("*", { count: "exact", head: true })
-        .eq("creator_id", userId);
+      // Plan breakdown: count per plan key
+      const planBreakdown: Record<string, number> = {};
+      subs.forEach((s) => {
+        planBreakdown[s.plan] = (planBreakdown[s.plan] || 0) + 1;
+      });
+
+      // Churn: expired this month / (active + expired this month)
+      const totalForChurn = subs.length + churnedCount;
+      const churnRate = totalForChurn > 0 ? (churnedCount / totalForChurn) * 100 : 0;
 
       // Recent subscribers with profile info
-      const recentSubIds = (subs ?? [])
+      const recentSubIds = [...subs]
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
         .slice(0, 5);
 
@@ -69,8 +85,11 @@ export function useDashboardStats() {
 
       return {
         revenue,
-        subscriberCount: subs?.length ?? 0,
-        postCount: postCount ?? 0,
+        mrr: grossRevenue,
+        subscriberCount: subs.length,
+        postCount: postCountResult.count ?? 0,
+        churnRate,
+        planBreakdown,
         recentSubscribers,
       };
     },

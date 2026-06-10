@@ -2,72 +2,48 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { CreatorWithStats } from "@/types/profile";
 
+type CreatorRow = {
+  id: string;
+  name: string;
+  handle: string | null;
+  bio: string | null;
+  avatar_url: string | null;
+  cover_url: string | null;
+  category: string | null;
+  role: string;
+  created_at: string;
+  social_links: unknown;
+  min_price: number;
+  subscriber_count: number;
+  post_count: number;
+};
+
 export function useCreators() {
   return useQuery({
     queryKey: ["creators"],
     queryFn: async (): Promise<CreatorWithStats[]> => {
-      // 1. Get all creator profiles
-      const { data: profiles, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("role", "creator");
-
+      const { data, error } = await supabase.rpc("get_creator_list");
       if (error) throw error;
-      if (!profiles?.length) return [];
-
-      const creatorIds = profiles.map((p) => p.id);
-
-      // 2. Get lowest price per creator
-      const { data: plans } = await supabase
-        .from("creator_plans")
-        .select("creator_id, price")
-        .in("creator_id", creatorIds);
-
-      const priceMap = new Map<string, number>();
-      plans?.forEach((p) => {
-        const current = priceMap.get(p.creator_id);
-        if (current === undefined || p.price < current) {
-          priceMap.set(p.creator_id, p.price);
-        }
-      });
-
-      // 3. Get subscription counts
-      const { data: subs } = await supabase
-        .from("subscriptions")
-        .select("creator_id")
-        .in("creator_id", creatorIds)
-        .eq("active", true);
-
-      const subsMap = new Map<string, number>();
-      subs?.forEach((s) => {
-        subsMap.set(s.creator_id, (subsMap.get(s.creator_id) || 0) + 1);
-      });
-
-      // 4. Get post counts
-      const { data: posts } = await supabase
-        .from("posts")
-        .select("creator_id")
-        .in("creator_id", creatorIds);
-
-      const postsMap = new Map<string, number>();
-      posts?.forEach((p) => {
-        postsMap.set(p.creator_id, (postsMap.get(p.creator_id) || 0) + 1);
-      });
-
-      return profiles
-        .filter((p) => (postsMap.get(p.id) ?? 0) > 0)
-        .map((p) => ({
-        ...p,
-        price: priceMap.get(p.id) ?? 0,
-        subscribers: subsMap.get(p.id) ?? 0,
-        postCount: postsMap.get(p.id) ?? 0,
-        // Compat fields
-        avatar: p.avatar_url || "",
-        cover: p.cover_url || "",
-        posts: postsMap.get(p.id) ?? 0,
+      return (data ?? []).map((row: CreatorRow) => ({
+        id: row.id,
+        name: row.name,
+        handle: row.handle,
+        bio: row.bio,
+        avatar_url: row.avatar_url,
+        cover_url: row.cover_url,
+        category: row.category,
+        role: row.role,
+        created_at: row.created_at,
+        social_links: row.social_links,
+        price: Number(row.min_price),
+        subscribers: Number(row.subscriber_count),
+        postCount: Number(row.post_count),
+        avatar: row.avatar_url || "",
+        cover: row.cover_url || "",
+        posts: Number(row.post_count),
         rating: 4.8,
         verified: true,
-        tags: p.category ? [p.category] : [],
+        tags: row.category ? [row.category] : [],
       }));
     },
   });

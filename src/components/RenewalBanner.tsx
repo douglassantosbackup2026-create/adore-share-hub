@@ -29,10 +29,12 @@ export function RenewalBanner() {
         </p>
       </div>
       <Link
-        to="/subscriptions"
+        to={expiring.length === 1
+          ? `/creator/${first.creator_id}?openSubscribe=1`
+          : "/subscriptions"}
         className="flex-shrink-0 rounded-full bg-gradient-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow-glow hover:scale-105 transition-transform"
       >
-        Renovar
+        Renovar agora
       </Link>
     </div>
   );

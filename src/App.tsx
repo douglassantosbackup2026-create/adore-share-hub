@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import BottomNav from "@/components/BottomNav";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import CreatorRoute from "@/components/CreatorRoute";
 import AdminRoute from "@/components/AdminRoute";
@@ -50,6 +51,7 @@ const App = () => {
       <BrowserRouter>
         <AuthProvider>
           <AgeGateModal open={showAgeGate} onConfirm={handleConfirm} onDeny={handleDeny} />
+          <BottomNav />
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/discover" element={<Discover />} />
