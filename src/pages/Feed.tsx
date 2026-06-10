@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useFollow } from "@/hooks/useFollow";
 import { Link } from "react-router-dom";
 import { Heart, MessageCircle, Share2, Lock, MoreHorizontal, Bookmark, Send, Loader2, Flame } from "lucide-react";
@@ -9,6 +9,7 @@ import { RenewalBanner } from "@/components/RenewalBanner";
 import { Compass } from "lucide-react";
 import { usePosts } from "@/hooks/usePosts";
 import { useCreators } from "@/hooks/useCreators";
+import { useFanPreferences } from "@/hooks/useFanPreferences";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMySubscriptionMap } from "@/hooks/useMySubscriptions";
 import { planMeetsMin, PLAN_LABELS, getCheapestPlanForMin } from "@/lib/plans";
@@ -155,6 +156,20 @@ function SuggestionItem({ creator }: { creator: { id: string | number; name: str
 const Feed = () => {
   const { posts: realPosts, likePost, isLoading: postsLoading } = usePosts();
   const { data: realCreators, isLoading: creatorsLoading } = useCreators();
+  const { data: prefCategories = [] } = useFanPreferences();
+
+  const sortedPosts = useMemo(() => {
+    if (!prefCategories.length) return realPosts;
+    return [...realPosts].sort((a, b) => {
+      const aCat = (a.creator as { category?: string | null }).category ?? "";
+      const bCat = (b.creator as { category?: string | null }).category ?? "";
+      const aMatch = prefCategories.includes(aCat);
+      const bMatch = prefCategories.includes(bCat);
+      if (aMatch && !bMatch) return -1;
+      if (!aMatch && bMatch) return 1;
+      return 0;
+    });
+  }, [realPosts, prefCategories]);
   const { user, profile } = useAuth();
   const mySubscriptionMap = useMySubscriptionMap();
   const [localLikes, setLocalLikes] = useState<Set<string>>(new Set());
@@ -164,10 +179,10 @@ const Feed = () => {
   const stories = realCreators?.slice(0, 6) ?? [];
   const suggestions = realCreators?.slice(0, 5) ?? [];
 
-  const creatorIds = [...new Set(realPosts.map((p) => p.creator_id))];
+  const creatorIds = [...new Set(sortedPosts.map((p) => p.creator_id))];
   const { data: plansByCreator = {} } = useCreatorPlansByCreator(creatorIds);
 
-  const feedPosts = realPosts.map((p) => ({
+  const feedPosts = sortedPosts.map((p) => ({
     id: p.id,
     min_plan: p.min_plan,
     creator: {

@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { resolveUserEmail, sendTransactionalEmail } from "../_shared/email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,30 +12,41 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { to_email, subject, body, template } = await req.json();
+    const { to_email, user_id, subject, body, template } = await req.json();
 
-    if (!to_email || !subject) {
-      return new Response(JSON.stringify({ error: "to_email and subject required" }), {
+    if (!subject) {
+      return new Response(JSON.stringify({ error: "subject required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    // Lovable Cloud Emails integration: log for now; wire to Cloud Emails when configured
-    console.log("send-notification:", { to_email, subject, template, body: body?.slice?.(0, 100) });
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Optional: store notification log
+    let recipient = to_email as string | undefined;
+    if (!recipient && user_id) {
+      recipient = (await resolveUserEmail(supabase, user_id)) ?? undefined;
+    }
+
+    if (!recipient) {
+      return new Response(JSON.stringify({ error: "to_email or valid user_id required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const sent = await sendTransactionalEmail(recipient, subject, body ?? "", template ?? "generic");
+
     await supabase.from("conversion_events").insert({
       event_name: "email_sent",
-      metadata: { to_email, subject, template },
+      user_id: user_id ?? null,
+      metadata: { to_email: recipient, subject, template, sent },
     }).then(() => {}).catch(() => {});
 
-    return new Response(JSON.stringify({ ok: true, queued: true }), {
+    return new Response(JSON.stringify({ ok: true, sent, to: recipient }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

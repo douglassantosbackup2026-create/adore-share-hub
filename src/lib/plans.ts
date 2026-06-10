@@ -56,3 +56,13 @@ export function getCheapestPlanForMin(
     .sort((a, b) => Number(a.price) - Number(b.price));
   return eligible[0];
 }
+
+export function getUpgradePriceDiff(
+  plans: { plan_name: string; price: number }[],
+  currentPlan: string,
+  targetPlan: string
+): number {
+  const current = getPlanPrice(plans, currentPlan) ?? 0;
+  const target = getPlanPrice(plans, targetPlan) ?? 0;
+  return Math.max(0, Number(target) - Number(current));
+}

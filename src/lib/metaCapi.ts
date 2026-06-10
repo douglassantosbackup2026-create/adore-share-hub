@@ -14,14 +14,18 @@ export async function sendMetaEvent(event: MetaCapiEvent): Promise<void> {
     const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
     const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+    const capiSecret = import.meta.env.VITE_META_CAPI_SECRET as string | undefined;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      apikey: anonKey,
+    };
+    if (capiSecret) headers["x-meta-capi-secret"] = capiSecret;
+
     await fetch(
       `https://${projectId}.supabase.co/functions/v1/meta-capi`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": anonKey,
-        },
+        headers,
         body: JSON.stringify({
           ...event,
           client_user_agent: navigator.userAgent,

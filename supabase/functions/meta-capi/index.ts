@@ -8,6 +8,22 @@ const corsHeaders = {
 
 const PIXEL_ID = "1688353905856977";
 const API_VERSION = "v18.0";
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX = 30;
+
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(key: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(key);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+  if (entry.count >= RATE_LIMIT_MAX) return false;
+  entry.count++;
+  return true;
+}
 
 function hashEmail(email: string): string {
   return createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
@@ -34,9 +50,33 @@ Deno.serve(async (req) => {
   }
 
   const META_CAPI_TOKEN = Deno.env.get("META_CAPI_TOKEN");
+  const META_CAPI_SECRET = Deno.env.get("META_CAPI_SECRET");
+
   if (!META_CAPI_TOKEN) {
     return new Response(JSON.stringify({ error: "META_CAPI_TOKEN not configured" }), {
       status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  if (META_CAPI_SECRET) {
+    const provided = req.headers.get("x-meta-capi-secret");
+    if (provided !== META_CAPI_SECRET) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
+
+  const clientIp =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") ||
+    "unknown";
+
+  if (!checkRateLimit(clientIp)) {
+    return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
+      status: 429,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

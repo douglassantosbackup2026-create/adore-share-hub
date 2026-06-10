@@ -68,12 +68,12 @@ Deno.serve(async (req) => {
       .split(".")[0]
       .split("//")[1];
 
-    async function notifyEmail(toEmail: string, subject: string, body: string, template: string) {
+    async function notifyUser(userId: string, subject: string, body: string, template: string) {
       try {
         await fetch(`https://${projectId}.supabase.co/functions/v1/send-notification`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ to_email: toEmail, subject, body, template }),
+          body: JSON.stringify({ user_id: userId, subject, body, template }),
         });
       } catch (e) {
         console.error("send-notification error (non-fatal):", e);
@@ -110,20 +110,12 @@ Deno.serve(async (req) => {
 
       await supabase.from("pending_payments").delete().eq("syncpay_id", identifier);
 
-      const { data: fanProfile } = await supabase
-        .from("profiles")
-        .select("email")
-        .eq("id", fanId)
-        .maybeSingle();
-
-      if (fanProfile?.email) {
-        await notifyEmail(
-          fanProfile.email,
-          "Gorjeta enviada com sucesso",
-          "Sua gorjeta foi recebida pelo criador. Obrigado pelo apoio!",
-          "tip_sent"
-        );
-      }
+      await notifyUser(
+        fanId,
+        "Gorjeta enviada com sucesso",
+        "Sua gorjeta foi recebida pelo criador. Obrigado pelo apoio!",
+        "tip_sent"
+      );
 
       return new Response(JSON.stringify({ ok: true, tip: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -274,18 +266,16 @@ Deno.serve(async (req) => {
 
     const { data: fanProfile } = await supabase
       .from("profiles")
-      .select("email, name")
+      .select("name")
       .eq("id", fanId)
       .maybeSingle();
 
-    if (fanProfile?.email) {
-      await notifyEmail(
-        fanProfile.email,
-        "Assinatura ativada na Flare",
-        `Olá${fanProfile.name ? ` ${fanProfile.name}` : ""}! Sua assinatura foi ativada com sucesso. Aproveite o conteúdo exclusivo.`,
-        "subscription_activated"
-      );
-    }
+    await notifyUser(
+      fanId,
+      "Assinatura ativada na Flare",
+      `Olá${fanProfile?.name ? ` ${fanProfile.name}` : ""}! Sua assinatura foi ativada com sucesso. Aproveite o conteúdo exclusivo.`,
+      "subscription_activated"
+    );
 
     console.log(`Subscription activated: fan=${fanId} creator=${creatorId} plan=${plan} identifier=${identifier}`);
 

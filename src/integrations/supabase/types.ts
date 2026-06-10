@@ -613,6 +613,20 @@ export type Database = {
           value: number
         }[]
       }
+      get_feed_posts: {
+        Args: { p_limit?: number }
+        Returns: {
+          id: string
+          text: string | null
+          media_url: string | null
+          media_type: string | null
+          likes_count: number
+          min_plan: string
+          created_at: string
+          creator_id: string
+          creator: Json
+        }[]
+      }
       get_platform_stats: {
         Args: never
         Returns: {

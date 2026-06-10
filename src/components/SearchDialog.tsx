@@ -45,7 +45,7 @@ const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
         .from("profiles")
         .select("id, name, handle, avatar_url, category")
         .eq("role", "creator")
-        .or(`name.ilike.${term},handle.ilike.${term}`)
+        .or(`name.ilike.${term},handle.ilike.${term},bio.ilike.${term},category.ilike.${term}`)
         .limit(5),
       supabase
         .from("posts")

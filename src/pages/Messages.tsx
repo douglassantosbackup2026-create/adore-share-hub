@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Send, Search, Phone, Video, MoreVertical, Image, Smile } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { Input } from "@/components/ui/input";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useConversations } from "@/hooks/useConversations";
@@ -11,15 +11,22 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const Messages = () => {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const contactFromUrl = searchParams.get("contact");
   const { data: realConversations, isLoading } = useConversations();
   const conversations = realConversations ?? [];
 
-  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(contactFromUrl);
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Set default selected on load
+  useEffect(() => {
+    if (contactFromUrl) {
+      setSelectedContactId(contactFromUrl);
+    }
+  }, [contactFromUrl]);
+
   useEffect(() => {
     if (!selectedContactId && conversations.length) {
       setSelectedContactId(conversations[0].contactId);

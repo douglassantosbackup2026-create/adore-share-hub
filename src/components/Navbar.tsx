@@ -5,6 +5,7 @@ import {
   LogOut, UserCircle2, Settings, Compass, CreditCard,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useConversations } from "@/hooks/useConversations";
 import SearchDialog from "@/components/SearchDialog";
 
 const Navbar = () => {
@@ -18,6 +19,8 @@ const Navbar = () => {
 
   const loggedIn = !!user;
   const isCreator = profile?.role === "creator";
+  const { data: conversations } = useConversations();
+  const unreadMessages = (conversations ?? []).reduce((sum, c) => sum + c.unreadCount, 0);
 
   const guestLinks = [
     { label: "Início", to: "/" },
@@ -84,8 +87,13 @@ const Navbar = () => {
 
         <nav className="hidden md:flex items-center gap-8">
           {navLinks.map(({ label, to }) => (
-            <Link key={to} to={to} className={linkClass(to)}>
+            <Link key={to} to={to} className={`relative ${linkClass(to)}`}>
               {label}
+              {to === "/messages" && unreadMessages > 0 && (
+                <span className="absolute -top-2 -right-4 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                  {unreadMessages > 9 ? "9+" : unreadMessages}
+                </span>
+              )}
             </Link>
           ))}
         </nav>
@@ -176,8 +184,13 @@ const Navbar = () => {
       {open && (
         <div className="md:hidden border-t border-border/50 bg-background/95 backdrop-blur-xl px-6 py-4 flex flex-col gap-4">
           {navLinks.map(({ label, to }) => (
-            <Link key={to} to={to} onClick={() => setOpen(false)} className="text-sm font-medium text-foreground">
+            <Link key={to} to={to} onClick={() => setOpen(false)} className="text-sm font-medium text-foreground flex items-center gap-2">
               {label}
+              {to === "/messages" && unreadMessages > 0 && (
+                <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
+                  {unreadMessages > 9 ? "9+" : unreadMessages}
+                </span>
+              )}
             </Link>
           ))}
           <div className="flex flex-col gap-2 pt-2 border-t border-border/50">

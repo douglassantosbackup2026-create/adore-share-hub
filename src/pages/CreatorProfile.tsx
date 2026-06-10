@@ -20,7 +20,7 @@ import { useAffiliateLinks } from "@/hooks/useAffiliateLinks";
 import { useMyAffiliateRequest, useCreateAffiliateRequest } from "@/hooks/useAffiliateRequests";
 import { useCreatorPixel } from "@/hooks/useCreatorPixel";
 import { getLoginPath } from "@/lib/authRedirect";
-import { normalizePlanName, PLAN_LABELS, PLAN_ORDER, planRank } from "@/lib/plans";
+import { normalizePlanName, PLAN_LABELS, PLAN_ORDER, planRank, getUpgradePriceDiff } from "@/lib/plans";
 import { trackConversion } from "@/lib/conversionEvents";
 
 
@@ -277,24 +277,52 @@ const CreatorProfile = () => {
     ? plans.findIndex((p) => planRank((p as { planKey: string }).planKey) > currentSubRank)
     : -1;
 
+  const highestLockedPlan = displayPosts
+    .filter((p) => p.locked && p.minPlan !== "free")
+    .map((p) => p.minPlan)
+    .sort((a, b) => planRank(b) - planRank(a))[0];
+
+  const contextualUpgradeIndex =
+    isSubscribed && highestLockedPlan
+      ? plans.findIndex(
+          (p) =>
+            planRank((p as { planKey: string }).planKey) >= planRank(highestLockedPlan) &&
+            planRank((p as { planKey: string }).planKey) > currentSubRank
+        )
+      : -1;
+
+  const effectiveUpgradeIndex =
+    contextualUpgradeIndex >= 0 ? contextualUpgradeIndex : upgradePlanIndex;
+
+  const dbPlans = realPlans.map((p) => ({ plan_name: p.plan_name, price: Number(p.price) }));
+
+  const getCheckoutAmount = (planIdx: number) => {
+    if (isSubscribed && subscription?.plan && planIdx >= 0) {
+      const targetKey = (plans[planIdx] as { planKey: string }).planKey;
+      const diff = getUpgradePriceDiff(dbPlans, subscription.plan, targetKey);
+      return diff > 0 ? diff : plans[planIdx].price;
+    }
+    return plans[planIdx]?.price ?? 0;
+  };
+
   const handleSubscribe = () => {
     if (!user) {
       toast.error("Faça login para assinar");
       return;
     }
     if (isSubscribed) {
-      if (upgradePlanIndex >= 0) {
-        setSelectedPlan(upgradePlanIndex);
+      if (effectiveUpgradeIndex >= 0) {
+        setSelectedPlan(effectiveUpgradeIndex);
       } else {
         toast.info("Você já é assinante!");
         return;
       }
     }
-    const planIdx = isSubscribed && upgradePlanIndex >= 0 ? upgradePlanIndex : selectedPlan;
+    const planIdx = isSubscribed && effectiveUpgradeIndex >= 0 ? effectiveUpgradeIndex : selectedPlan;
     sendMetaEvent({
       event_name: "InitiateCheckout",
       user_email: user.email,
-      value: plans[planIdx].price,
+      value: getCheckoutAmount(planIdx),
       currency: "BRL",
       creator_pixel_id: creatorPixelId,
       creator_access_token: creatorAccessToken,
@@ -616,6 +644,31 @@ const CreatorProfile = () => {
 
           {/* Right — Subscription plans */}
           <div className="space-y-4">
+            {isSubscribed && effectiveUpgradeIndex >= 0 && highestLockedPlan && (
+              <div className="rounded-2xl border border-primary/40 bg-primary/5 p-4 space-y-2">
+                <p className="font-display font-bold text-foreground">
+                  Upgrade para {plans[effectiveUpgradeIndex].name}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Você tem {displayPosts.filter((p) => p.locked).length} conteúdo(s) bloqueado(s) no tier{" "}
+                  {PLAN_LABELS[highestLockedPlan] ?? highestLockedPlan}. Faça upgrade para desbloquear.
+                </p>
+                <p className="text-sm font-semibold text-primary">
+                  Apenas R$ {getCheckoutAmount(effectiveUpgradeIndex).toFixed(2).replace(".", ",")} (diferença do plano atual)
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPlan(effectiveUpgradeIndex);
+                    setPixModalOpen(true);
+                  }}
+                  className="w-full rounded-xl bg-gradient-primary py-2.5 text-sm font-bold text-primary-foreground"
+                >
+                  Fazer upgrade agora
+                </button>
+              </div>
+            )}
+
             <h2 className="font-display text-lg font-bold text-foreground">Planos de assinatura</h2>
 
             {plans.map((plan, i) => {
@@ -666,29 +719,15 @@ const CreatorProfile = () => {
 
             <button
               onClick={handleSubscribe}
-              disabled={isSubscribed && upgradePlanIndex < 0}
+              disabled={isSubscribed && effectiveUpgradeIndex < 0}
               className="w-full rounded-2xl bg-gradient-primary py-4 font-display font-bold text-primary-foreground shadow-glow transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_8px_30px_hsl(340_80%_58%_/_0.5)] disabled:opacity-60 disabled:hover:scale-100"
             >
-              {isSubscribed && upgradePlanIndex < 0
+              {isSubscribed && effectiveUpgradeIndex < 0
                 ? "Já assinado ✓"
-                : isSubscribed && upgradePlanIndex >= 0
-                  ? `Upgrade para ${plans[upgradePlanIndex].name}`
+                : isSubscribed && effectiveUpgradeIndex >= 0
+                  ? `Upgrade por R$ ${getCheckoutAmount(effectiveUpgradeIndex).toFixed(2).replace(".", ",")}`
                   : `Assinar por R$ ${plans[selectedPlan].price.toFixed(2).replace(".", ",")}/mês`}
             </button>
-
-            {isSubscribed && upgradePlanIndex >= 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedPlan(upgradePlanIndex);
-                  setPixModalOpen(true);
-                }}
-                className="w-full rounded-2xl border border-primary/40 py-3 text-sm font-semibold text-primary hover:bg-primary/5 transition-colors"
-              >
-                Fazer upgrade para {plans[upgradePlanIndex].name} — R${" "}
-                {plans[upgradePlanIndex].price.toFixed(2).replace(".", ",")}/mês
-              </button>
-            )}
 
             {user && !isOwner && (
               <button
@@ -779,7 +818,7 @@ const CreatorProfile = () => {
             creatorId={id!}
             creatorName={creator.name}
             planName={(plans[selectedPlan] as { planKey: string }).planKey}
-            amount={plans[selectedPlan].price}
+            amount={getCheckoutAmount(selectedPlan)}
             fanId={user.id}
             fanEmail={user.email ?? ""}
             creatorPixelId={creatorPixelId}

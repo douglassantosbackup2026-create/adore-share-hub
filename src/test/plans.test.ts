@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { planMeetsMin, planRank, getCheapestPlanForMin, normalizePlanName } from "@/lib/plans";
+import { planMeetsMin, planRank, getCheapestPlanForMin, normalizePlanName, getUpgradePriceDiff } from "@/lib/plans";
 
 describe("planMeetsMin", () => {
   it("free content is accessible to everyone", () => {
@@ -43,5 +43,19 @@ describe("getCheapestPlanForMin", () => {
     expect(getCheapestPlanForMin(plans, "superfan")?.plan_name).toBe("superfan");
     expect(getCheapestPlanForMin(plans, "vip")?.price).toBe(30);
     expect(getCheapestPlanForMin(plans, "fan")?.price).toBe(10);
+  });
+});
+
+describe("getUpgradePriceDiff", () => {
+  const plans = [
+    { plan_name: "fan", price: 10 },
+    { plan_name: "superfan", price: 25 },
+    { plan_name: "vip", price: 50 },
+  ];
+
+  it("returns price difference between tiers", () => {
+    expect(getUpgradePriceDiff(plans, "fan", "superfan")).toBe(15);
+    expect(getUpgradePriceDiff(plans, "superfan", "vip")).toBe(25);
+    expect(getUpgradePriceDiff(plans, "vip", "fan")).toBe(0);
   });
 });

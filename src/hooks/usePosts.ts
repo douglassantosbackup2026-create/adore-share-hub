@@ -10,15 +10,21 @@ export function usePosts() {
   const postsQuery = useQuery({
     queryKey: ["feedPosts"],
     queryFn: async (): Promise<PostWithCreator[]> => {
-      const { data, error } = await supabase
-        .from("posts")
-        .select("*, creator:profiles!posts_creator_id_fkey(id, name, handle, avatar_url)")
-        .order("created_at", { ascending: false })
-        .limit(50);
+      const { data, error } = await supabase.rpc("get_feed_posts", { p_limit: 50 });
 
       if (error) throw error;
 
-      return (data ?? []).map((row: any) => ({
+      return (data ?? []).map((row: {
+        id: string;
+        text: string | null;
+        media_url: string | null;
+        media_type: string | null;
+        likes_count: number;
+        min_plan: string;
+        created_at: string;
+        creator_id: string;
+        creator: { id: string; name: string; handle: string | null; avatar_url: string | null };
+      }) => ({
         id: row.id,
         text: row.text,
         media_url: row.media_url,
@@ -27,7 +33,10 @@ export function usePosts() {
         min_plan: row.min_plan,
         created_at: row.created_at,
         creator_id: row.creator_id,
-        creator: row.creator,
+        creator: {
+          ...row.creator,
+          category: (row.creator as { category?: string | null }).category ?? null,
+        },
       }));
     },
   });

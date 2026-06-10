@@ -29,23 +29,21 @@ Deno.serve(async (req) => {
 
     const { data: expiringSoon } = await supabase
       .from("subscriptions")
-      .select("fan_id, creator_id, plan, expires_at, fan:profiles!subscriptions_fan_id_fkey(email, name)")
+      .select("fan_id, fan:profiles!subscriptions_fan_id_fkey(name)")
       .eq("active", true)
       .gte("expires_at", dayStart.toISOString())
       .lte("expires_at", dayEnd.toISOString());
 
     let sent = 0;
     for (const sub of expiringSoon ?? []) {
-      const fan = sub.fan as { email?: string; name?: string } | null;
-      if (!fan?.email) continue;
-
+      const fan = sub.fan as { name?: string } | null;
       await fetch(`https://${projectId}.supabase.co/functions/v1/send-notification`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          to_email: fan.email,
+          user_id: sub.fan_id,
           subject: "Sua assinatura Flare renova em 3 dias",
-          body: `Olá${fan.name ? ` ${fan.name}` : ""}! Sua assinatura expira em breve. Renove em /subscriptions para não perder o acesso.`,
+          body: `Olá${fan?.name ? ` ${fan.name}` : ""}! Sua assinatura expira em breve. Renove em /subscriptions para não perder o acesso.`,
           template: "renewal_reminder",
         }),
       });
@@ -54,7 +52,7 @@ Deno.serve(async (req) => {
 
     const { data: expired } = await supabase
       .from("subscriptions")
-      .select("fan_id, fan:profiles!subscriptions_fan_id_fkey(email, name)")
+      .select("fan_id, fan:profiles!subscriptions_fan_id_fkey(name)")
       .eq("active", true)
       .lt("expires_at", now.toISOString());
 
@@ -66,20 +64,18 @@ Deno.serve(async (req) => {
         .eq("active", true)
         .lt("expires_at", now.toISOString());
 
-      const fan = sub.fan as { email?: string; name?: string } | null;
-      if (fan?.email) {
-        await fetch(`https://${projectId}.supabase.co/functions/v1/send-notification`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            to_email: fan.email,
-            subject: "Sua assinatura Flare expirou",
-            body: `Olá${fan.name ? ` ${fan.name}` : ""}! Sua assinatura expirou. Renove em /subscriptions para voltar a acessar o conteúdo.`,
-            template: "subscription_expired",
-          }),
-        });
-        sent++;
-      }
+      const fan = sub.fan as { name?: string } | null;
+      await fetch(`https://${projectId}.supabase.co/functions/v1/send-notification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: sub.fan_id,
+          subject: "Sua assinatura Flare expirou",
+          body: `Olá${fan?.name ? ` ${fan.name}` : ""}! Sua assinatura expirou. Renove em /subscriptions para voltar a acessar o conteúdo.`,
+          template: "subscription_expired",
+        }),
+      });
+      sent++;
     }
 
     return new Response(JSON.stringify({ ok: true, sent }), {
