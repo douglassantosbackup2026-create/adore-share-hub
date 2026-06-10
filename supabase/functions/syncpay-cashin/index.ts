@@ -91,7 +91,10 @@ Deno.serve(async (req) => {
 
     const cashInPayload = {
       amount: amountFloat,
-      description: `Assinatura ${creator_name ?? "Criador"} - Plano ${plan_name}`,
+      description:
+        plan_name === "tip"
+          ? `Gorjeta para ${creator_name ?? "Criador"}`
+          : `Assinatura ${creator_name ?? "Criador"} - Plano ${plan_name}`,
       webhook_url: webhookUrl,
       client: {
         name: fan_name,

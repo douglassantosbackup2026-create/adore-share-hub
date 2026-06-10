@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
-  LayoutDashboard, Users, Star, FileText, DollarSign, LogOut, Flame, Trash2, Eye, Shield, CheckCircle, Clock, Link2,
+  LayoutDashboard, Users, Star, FileText, DollarSign, LogOut, Flame, Trash2, Eye, Shield, CheckCircle, Clock, Link2, TrendingUp,
 } from "lucide-react";
 import {
   SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarMenu,
@@ -32,8 +32,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useMonthlyRevenue } from "@/hooks/useMonthlyRevenue";
 import { useAffiliateFeeRate, useUpdateAffiliateFee, useAffiliateOverview } from "@/hooks/useAffiliateStats";
 import { useAdminAffiliateRequests, useUpdateAffiliateRequest } from "@/hooks/useAffiliateRequests";
+import { useConversionStats } from "@/hooks/useConversionStats";
 
-type Section = "overview" | "users" | "creators" | "posts" | "financial" | "affiliates";
+type Section = "overview" | "users" | "creators" | "posts" | "financial" | "affiliates" | "conversion";
 
 const navItems = [
   { id: "overview" as Section, label: "Visão Geral", icon: LayoutDashboard },
@@ -42,6 +43,7 @@ const navItems = [
   { id: "posts" as Section, label: "Posts", icon: FileText },
   { id: "financial" as Section, label: "Financeiro", icon: DollarSign },
   { id: "affiliates" as Section, label: "Afiliados", icon: Link2 },
+  { id: "conversion" as Section, label: "Conversão", icon: TrendingUp },
 ];
 
 // ── Overview Tab ────────────────────────────────────────────────────────────
@@ -1017,6 +1019,108 @@ function AffiliatesTab() {
   );
 }
 
+// ── Conversion Tab ───────────────────────────────────────────────────────────
+function ConversionTab() {
+  const { data: stats, isLoading } = useConversionStats();
+
+  const funnel = [
+    { label: "Visualizações de perfil", value: stats?.profile_views ?? 0 },
+    { label: "Checkout iniciado", value: stats?.checkout_initiated ?? 0 },
+    { label: "Pix gerado", value: stats?.pix_generated ?? 0 },
+    { label: "Assinatura ativada", value: stats?.subscription_activated ?? 0 },
+  ];
+
+  const pixRate =
+    stats && stats.checkout_initiated > 0
+      ? ((stats.pix_generated / stats.checkout_initiated) * 100).toFixed(1)
+      : "0";
+  const conversionRate =
+    stats && stats.profile_views > 0
+      ? ((stats.subscription_activated / stats.profile_views) * 100).toFixed(2)
+      : "0";
+
+  if (isLoading) {
+    return (
+      <div className="grid gap-4 md:grid-cols-2">
+        {[1, 2, 3, 4].map((i) => (
+          <Skeleton key={i} className="h-24 rounded-xl" />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {funnel.map((step) => (
+          <Card key={step.label}>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">{step.label}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold">{step.value.toLocaleString("pt-BR")}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Taxa Checkout → Pix</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-primary">{pixRate}%</p>
+            <p className="text-sm text-muted-foreground mt-1">Pix gerados / checkouts iniciados</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Taxa Perfil → Assinatura</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-primary">{conversionRate}%</p>
+            <p className="text-sm text-muted-foreground mt-1">Assinaturas ativadas / visualizações de perfil</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Funil de conversão</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {funnel.map((step, i) => {
+            const max = funnel[0].value || 1;
+            const pct = Math.round((step.value / max) * 100);
+            return (
+              <div key={step.label}>
+                <div className="flex justify-between text-sm mb-1">
+                  <span>{step.label}</span>
+                  <span className="text-muted-foreground">{step.value}</span>
+                </div>
+                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full bg-primary rounded-full transition-all"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                {i < funnel.length - 1 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {step.value > 0
+                      ? `${((funnel[i + 1].value / step.value) * 100).toFixed(1)}% → próximo passo`
+                      : "—"}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ── Main Admin Page ──────────────────────────────────────────────────────────
 export default function Admin() {
   const [activeSection, setActiveSection] = useState<Section>("overview");
@@ -1030,6 +1134,7 @@ export default function Admin() {
       case "posts": return <PostsTab />;
       case "financial": return <FinancialTab />;
       case "affiliates": return <AffiliatesTab />;
+      case "conversion": return <ConversionTab />;
     }
   };
 

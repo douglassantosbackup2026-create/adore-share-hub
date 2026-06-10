@@ -3,6 +3,8 @@ import { useNavigate, Link } from "react-router-dom";
 import { Flame, ChevronRight } from "lucide-react";
 import { useCreators } from "@/hooks/useCreators";
 import { useFollow } from "@/hooks/useFollow";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -38,6 +40,7 @@ function FollowableCreator({ creator }: { creator: { id: string | number; name: 
 
 const FanOnboarding = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [step, setStep] = useState(0);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const { data: creators, isLoading } = useCreators();
@@ -52,8 +55,22 @@ const FanOnboarding = () => {
     (c) => selectedCategories.length === 0 || selectedCategories.includes(c.category ?? "")
   ).slice(0, 8);
 
-  const finish = () => {
+  const finish = async () => {
     localStorage.setItem("fan_onboarded", "true");
+
+    if (user) {
+      await supabase.from("fan_preferences").upsert({
+        user_id: user.id,
+        categories: selectedCategories,
+        updated_at: new Date().toISOString(),
+      });
+    }
+
+    const topCreator = suggestedCreators[0];
+    if (topCreator) {
+      navigate(`/creator/${topCreator.id}`);
+      return;
+    }
     navigate("/feed");
   };
 

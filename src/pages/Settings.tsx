@@ -143,9 +143,9 @@ const Settings = () => {
   const handleSavePlans = async () => {
     if (!user) return;
     const planEntries = [
-      { plan_name: "Fã", price: parseFloat(plans.fan) },
-      { plan_name: "Super Fã", price: parseFloat(plans.superfan) },
-      { plan_name: "VIP", price: parseFloat(plans.vip) },
+      { plan_name: "fan", price: parseFloat(plans.fan) },
+      { plan_name: "superfan", price: parseFloat(plans.superfan) },
+      { plan_name: "vip", price: parseFloat(plans.vip) },
     ];
 
     for (const entry of planEntries) {

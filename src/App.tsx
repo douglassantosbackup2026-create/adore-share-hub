@@ -24,6 +24,7 @@ import Onboarding from "./pages/Onboarding";
 import Admin from "./pages/Admin";
 import PendingApproval from "./pages/PendingApproval";
 import FanOnboarding from "./pages/FanOnboarding";
+import Subscriptions from "./pages/Subscriptions";
 
 const queryClient = new QueryClient();
 
@@ -57,6 +58,7 @@ const App = () => {
             <Route path="/signup" element={<Signup />} />
             <Route path="/feed" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
             <Route path="/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
+            <Route path="/subscriptions" element={<ProtectedRoute><Subscriptions /></ProtectedRoute>} />
             <Route path="/dashboard" element={<CreatorRoute><Dashboard /></CreatorRoute>} />
             <Route path="/settings" element={<CreatorRoute><Settings /></CreatorRoute>} />
             <Route path="/profile/:id" element={<FanProfile />} />

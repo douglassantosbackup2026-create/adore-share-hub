@@ -2,47 +2,17 @@ import { useState, useRef, useEffect } from "react";
 import { Send, Search, Phone, Video, MoreVertical, Image, Smile } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { Input } from "@/components/ui/input";
-import { mockCreators } from "@/data/creators";
+import { Link } from "react-router-dom";
+import { MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useConversations } from "@/hooks/useConversations";
 import { useMessages } from "@/hooks/useMessages";
 import { useAuth } from "@/contexts/AuthContext";
 
-// Mock conversations as fallback
-const mockConversations = [
-  {
-    contactId: "mock-1",
-    contactName: mockCreators[0].name,
-    contactAvatar: mockCreators[0].avatar,
-    contactHandle: mockCreators[0].handle,
-    lastMessage: "Obrigada pelo apoio! 💕",
-    unreadCount: 2,
-    lastMessageTime: "2min",
-  },
-  {
-    contactId: "mock-2",
-    contactName: mockCreators[4].name,
-    contactAvatar: mockCreators[4].avatar,
-    contactHandle: mockCreators[4].handle,
-    lastMessage: "A aula de hoje está confirmada!",
-    unreadCount: 0,
-    lastMessageTime: "1h",
-  },
-  {
-    contactId: "mock-3",
-    contactName: mockCreators[6].name,
-    contactAvatar: mockCreators[6].avatar,
-    contactHandle: mockCreators[6].handle,
-    lastMessage: "Esse look ficou incrível em você!",
-    unreadCount: 1,
-    lastMessageTime: "3h",
-  },
-];
-
 const Messages = () => {
   const { user } = useAuth();
-  const { data: realConversations } = useConversations();
-  const conversations = realConversations?.length ? realConversations : mockConversations;
+  const { data: realConversations, isLoading } = useConversations();
+  const conversations = realConversations ?? [];
 
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -65,7 +35,7 @@ const Messages = () => {
 
   const handleSend = () => {
     if (!input.trim()) return;
-    if (realConversations?.length && user) {
+    if (user && selectedContactId) {
       sendMessage.mutate(input.trim());
     }
     setInput("");
@@ -104,6 +74,15 @@ const Messages = () => {
               </div>
             </div>
             <div className="flex-1 overflow-y-auto">
+              {!isLoading && filteredConvs.length === 0 && (
+                <div className="p-8 text-center">
+                  <MessageCircle className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
+                  <p className="text-sm text-muted-foreground mb-3">Nenhuma conversa ainda.</p>
+                  <Link to="/discover" className="text-sm text-primary hover:underline">
+                    Encontrar criadores
+                  </Link>
+                </div>
+              )}
               {filteredConvs.map((conv) => (
                 <button
                   key={conv.contactId}

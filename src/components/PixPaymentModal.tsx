@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { sendMetaEvent } from "@/lib/metaCapi";
+import { trackConversion } from "@/lib/conversionEvents";
 
 interface PixPaymentModalProps {
   open: boolean;
@@ -114,7 +115,27 @@ export function PixPaymentModal({
 
   function startPolling() {
     stopPolling();
+    const isTip = planName === "tip";
     pollingRef.current = setInterval(async () => {
+      if (isTip) {
+        if (!identifier) return;
+        const { data } = await supabase
+          .from("tips")
+          .select("id")
+          .eq("syncpay_id", identifier)
+          .maybeSingle();
+        if (data) {
+          stopPolling();
+          stopCountdown();
+          setStep("success");
+          setTimeout(() => {
+            onSuccess();
+            onClose();
+          }, 1500);
+        }
+        return;
+      }
+
       const { data } = await supabase
         .from("subscriptions")
         .select("id")
@@ -193,6 +214,10 @@ export function PixPaymentModal({
 
       setPixCode(json.pix_code);
       setIdentifier(json.identifier);
+      trackConversion("pix_generated", {
+        creatorId,
+        metadata: { plan: planName, amount },
+      });
       setStep("pix");
       startPolling();
       startCountdown();

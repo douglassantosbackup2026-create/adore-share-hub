@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts";
-import { mockCreators } from "@/data/creators";
 import { useDashboardStats } from "@/hooks/useDashboardStats";
 import { useMonthlyRevenue } from "@/hooks/useMonthlyRevenue";
 import { useAuth } from "@/contexts/AuthContext";
@@ -44,23 +43,13 @@ const Dashboard = () => {
 
   const displayName = profile?.name || "Criador";
 
-  const mockRecentSubscribers = [
-    { name: "Mariana A.", avatar: mockCreators[1].avatar, plan: "Super Fã", since: "há 2h" },
-    { name: "Carolina P.", avatar: mockCreators[3].avatar, plan: "VIP", since: "há 5h" },
-    { name: "Beatriz S.", avatar: mockCreators[5].avatar, plan: "Fã", since: "há 1d" },
-    { name: "Larissa M.", avatar: mockCreators[7].avatar, plan: "Super Fã", since: "há 2d" },
-    { name: "Amanda F.", avatar: mockCreators[2].avatar, plan: "Fã", since: "há 3d" },
-  ];
-
-  const recentSubscribers = dashStats?.recentSubscribers?.length
-    ? dashStats.recentSubscribers
-    : mockRecentSubscribers;
+  const recentSubscribers = dashStats?.recentSubscribers ?? [];
 
   const stats = [
     {
       label: "Receita Líquida",
-      value: dashStats ? `R$ ${dashStats.revenue.toLocaleString("pt-BR")}` : "R$ 6.100",
-      change: "+18%",
+      value: dashStats ? `R$ ${dashStats.revenue.toLocaleString("pt-BR")}` : "R$ 0",
+      change: "",
       up: true,
       icon: DollarSign,
       color: "text-green-400",
@@ -68,24 +57,24 @@ const Dashboard = () => {
     },
     {
       label: "Assinantes",
-      value: dashStats ? dashStats.subscriberCount.toLocaleString("pt-BR") : "1.247",
-      change: "+84",
+      value: dashStats ? dashStats.subscriberCount.toLocaleString("pt-BR") : "0",
+      change: "",
       up: true,
       icon: Users,
       color: "text-primary",
     },
     {
       label: "Posts",
-      value: dashStats ? dashStats.postCount.toString() : "348",
-      change: "+12 este mês",
+      value: dashStats ? dashStats.postCount.toString() : "0",
+      change: "",
       up: true,
       icon: FileImage,
       color: "text-blue-400",
     },
     {
       label: "Avaliação Média",
-      value: "4.9 ⭐",
-      change: "+0.1",
+      value: "—",
+      change: "",
       up: true,
       icon: Star,
       color: "text-amber-400",

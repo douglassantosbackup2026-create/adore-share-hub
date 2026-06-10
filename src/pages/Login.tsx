@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { getPostAuthPath } from "@/lib/authRedirect";
 import { Flame, Eye, EyeOff, Mail, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,18 +14,20 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get("returnTo");
   const { signIn, user, profile, loading } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
     if (!loading && user) {
       if (profile) {
-        navigate(profile.role === "creator" ? "/dashboard" : "/feed", { replace: true });
+        navigate(getPostAuthPath(returnTo, profile.role), { replace: true });
       } else {
         navigate("/onboarding", { replace: true });
       }
     }
-  }, [user, profile, loading, navigate]);
+  }, [user, profile, loading, navigate, returnTo]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,7 +121,10 @@ const Login = () => {
 
           <p className="text-center text-sm text-muted-foreground">
             Não tem conta?{" "}
-            <Link to="/signup" className="text-primary hover:underline font-medium">
+            <Link
+              to={returnTo ? `/signup?returnTo=${encodeURIComponent(returnTo)}` : "/signup"}
+              className="text-primary hover:underline font-medium"
+            >
               Cadastre-se
             </Link>
           </p>

@@ -1,10 +1,25 @@
+import { useEffect } from "react";
 import { Clock, Home, LogOut } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function PendingApproval() {
-  const { signOut } = useAuth();
+  const { signOut, profile, refreshProfile } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (profile?.approved) {
+      navigate("/dashboard", { replace: true });
+      return;
+    }
+
+    const interval = setInterval(() => {
+      refreshProfile();
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [profile?.approved, refreshProfile, navigate]);
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
@@ -23,8 +38,8 @@ export default function PendingApproval() {
         </div>
 
         <div className="bg-muted/50 rounded-lg p-4 text-sm text-muted-foreground space-y-1">
-          <p>⏱ O processo leva geralmente até 24 horas.</p>
-          <p>📧 Você será notificado quando sua conta for aprovada.</p>
+          <p>O processo leva geralmente até 24 horas.</p>
+          <p>Esta página atualiza automaticamente a cada 30 segundos.</p>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">

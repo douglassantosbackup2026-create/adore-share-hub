@@ -1,8 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import type { PostWithCreator } from "@/types/profile";
 
 export function usePosts() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
 
   const postsQuery = useQuery({
@@ -31,11 +33,11 @@ export function usePosts() {
   });
 
   const likePost = useMutation({
-    mutationFn: async ({ postId, currentLikes }: { postId: string; currentLikes: number }) => {
+    mutationFn: async ({ postId }: { postId: string }) => {
+      if (!user) throw new Error("Not authenticated");
       const { error } = await supabase
-        .from("posts")
-        .update({ likes_count: currentLikes + 1 })
-        .eq("id", postId);
+        .from("post_likes")
+        .insert({ post_id: postId, user_id: user.id });
       if (error) throw error;
     },
     onSuccess: () => {

@@ -136,6 +136,59 @@ export type Database = {
           },
         ]
       }
+      conversion_events: {
+        Row: {
+          created_at: string
+          creator_id: string | null
+          event_name: string
+          id: string
+          metadata: Json
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          creator_id?: string | null
+          event_name: string
+          id?: string
+          metadata?: Json
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          creator_id?: string | null
+          event_name?: string
+          id?: string
+          metadata?: Json
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      fan_preferences: {
+        Row: {
+          categories: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          categories?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          categories?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fan_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       follows: {
         Row: {
           created_at: string
@@ -348,6 +401,42 @@ export type Database = {
           },
         ]
       }
+      post_likes: {
+        Row: {
+          created_at: string
+          id: string
+          post_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          post_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          post_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_likes_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_likes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           approved: boolean
@@ -395,6 +484,7 @@ export type Database = {
           active: boolean
           created_at: string
           creator_id: string
+          expires_at: string | null
           fan_id: string
           id: string
           plan: string
@@ -404,6 +494,7 @@ export type Database = {
           active?: boolean
           created_at?: string
           creator_id: string
+          expires_at?: string | null
           fan_id: string
           id?: string
           plan: string
@@ -413,6 +504,7 @@ export type Database = {
           active?: boolean
           created_at?: string
           creator_id?: string
+          expires_at?: string | null
           fan_id?: string
           id?: string
           plan?: string
@@ -428,6 +520,48 @@ export type Database = {
           },
           {
             foreignKeyName: "subscriptions_fan_id_fkey"
+            columns: ["fan_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tips: {
+        Row: {
+          amount: number
+          created_at: string
+          creator_id: string
+          fan_id: string
+          id: string
+          syncpay_id: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          creator_id: string
+          fan_id: string
+          id?: string
+          syncpay_id?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          creator_id?: string
+          fan_id?: string
+          id?: string
+          syncpay_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tips_creator_id_fkey"
+            columns: ["creator_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tips_fan_id_fkey"
             columns: ["fan_id"]
             isOneToOne: false
             referencedRelation: "profiles"

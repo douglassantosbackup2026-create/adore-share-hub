@@ -44,20 +44,6 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Idempotency: check if subscription already activated for this syncpay_id
-    const { data: existingSub } = await supabase
-      .from("subscriptions")
-      .select("id")
-      .eq("syncpay_id", identifier)
-      .maybeSingle();
-
-    if (existingSub) {
-      console.log("Subscription already activated for identifier:", identifier);
-      return new Response(JSON.stringify({ ok: true, duplicate: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     // Look up pending payment to get fan_id, creator_id, plan
     const { data: pending, error: pendingErr } = await supabase
       .from("pending_payments")
@@ -78,6 +64,86 @@ Deno.serve(async (req) => {
 
     const { fan_id: fanId, creator_id: creatorId, plan, amount, affiliate_ref: affiliateRef } = pending;
 
+    const projectId = Deno.env.get("SUPABASE_URL")!
+      .split(".")[0]
+      .split("//")[1];
+
+    async function notifyEmail(toEmail: string, subject: string, body: string, template: string) {
+      try {
+        await fetch(`https://${projectId}.supabase.co/functions/v1/send-notification`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ to_email: toEmail, subject, body, template }),
+        });
+      } catch (e) {
+        console.error("send-notification error (non-fatal):", e);
+      }
+    }
+
+    // Tip payment flow
+    if (plan === "tip") {
+      const { data: existingTip } = await supabase
+        .from("tips")
+        .select("id")
+        .eq("syncpay_id", identifier)
+        .maybeSingle();
+
+      if (existingTip) {
+        return new Response(JSON.stringify({ ok: true, duplicate: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { error: tipErr } = await supabase.from("tips").insert({
+        fan_id: fanId,
+        creator_id: creatorId,
+        amount,
+        syncpay_id: identifier,
+      });
+
+      if (tipErr) {
+        return new Response(JSON.stringify({ error: tipErr.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      await supabase.from("pending_payments").delete().eq("syncpay_id", identifier);
+
+      const { data: fanProfile } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("id", fanId)
+        .maybeSingle();
+
+      if (fanProfile?.email) {
+        await notifyEmail(
+          fanProfile.email,
+          "Gorjeta enviada com sucesso",
+          "Sua gorjeta foi recebida pelo criador. Obrigado pelo apoio!",
+          "tip_sent"
+        );
+      }
+
+      return new Response(JSON.stringify({ ok: true, tip: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Idempotency: check if subscription already activated for this syncpay_id
+    const { data: existingSub } = await supabase
+      .from("subscriptions")
+      .select("id")
+      .eq("syncpay_id", identifier)
+      .maybeSingle();
+
+    if (existingSub) {
+      console.log("Subscription already activated for identifier:", identifier);
+      return new Response(JSON.stringify({ ok: true, duplicate: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Deactivate any previous subscription for this fan+creator
     await supabase
       .from("subscriptions")
@@ -94,6 +160,7 @@ Deno.serve(async (req) => {
         plan,
         active: true,
         syncpay_id: identifier,
+        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       });
 
     if (insertError) {
@@ -180,9 +247,6 @@ Deno.serve(async (req) => {
 
       const socialLinks = (creatorProfile?.social_links as Record<string, string> | null) ?? {};
 
-      const projectId = Deno.env.get("SUPABASE_URL")!
-        .split(".")[0]
-        .split("//")[1];
       await fetch(
         `https://${projectId}.supabase.co/functions/v1/meta-capi`,
         {
@@ -199,6 +263,28 @@ Deno.serve(async (req) => {
       );
     } catch (metaErr) {
       console.error("Meta CAPI error (non-fatal):", metaErr);
+    }
+
+    await supabase.from("conversion_events").insert({
+      event_name: "subscription_activated",
+      user_id: fanId,
+      creator_id: creatorId,
+      metadata: { plan, amount, identifier },
+    }).then(() => {}).catch(() => {});
+
+    const { data: fanProfile } = await supabase
+      .from("profiles")
+      .select("email, name")
+      .eq("id", fanId)
+      .maybeSingle();
+
+    if (fanProfile?.email) {
+      await notifyEmail(
+        fanProfile.email,
+        "Assinatura ativada na Flare",
+        `Olá${fanProfile.name ? ` ${fanProfile.name}` : ""}! Sua assinatura foi ativada com sucesso. Aproveite o conteúdo exclusivo.`,
+        "subscription_activated"
+      );
     }
 
     console.log(`Subscription activated: fan=${fanId} creator=${creatorId} plan=${plan} identifier=${identifier}`);

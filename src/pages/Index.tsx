@@ -4,13 +4,7 @@ import heroBg from "@/assets/hero-bg.jpg";
 import CreatorCard from "@/components/CreatorCard";
 import Navbar from "@/components/Navbar";
 import { useFeaturedCreators } from "@/hooks/useFeaturedCreators";
-
-const stats = [
-  { value: "2M+", label: "Criadores ativos" },
-  { value: "R$50M+", label: "Pagos aos criadores" },
-  { value: "15M+", label: "Assinantes" },
-  { value: "98%", label: "Satisfação" },
-];
+import { usePlatformStats } from "@/hooks/usePlatformStats";
 
 const features = [
   {
@@ -47,6 +41,19 @@ const features = [
 
 const Index = () => {
   const { data: featured = [] } = useFeaturedCreators();
+  const { data: platformStats } = usePlatformStats();
+
+  const stats = [
+    { value: String(platformStats?.total_creators ?? 0), label: "Criadores ativos" },
+    {
+      value: platformStats
+        ? `R$ ${platformStats.estimated_revenue.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
+        : "R$ 0",
+      label: "Receita na plataforma",
+    },
+    { value: String(platformStats?.total_active_subs ?? 0), label: "Assinaturas ativas" },
+    { value: String(platformStats?.total_fans ?? 0), label: "Fãs cadastrados" },
+  ];
 
   return (
     <div className="min-h-screen bg-background">
@@ -89,7 +96,7 @@ const Index = () => {
               <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
-              to="/discover"
+              to="/signup?role=creator"
               className="flex items-center gap-2 rounded-full border border-border/60 bg-card/50 backdrop-blur-sm px-8 py-4 text-base font-semibold text-foreground transition-all duration-300 hover:border-primary/40 hover:bg-card/80"
             >
               Seja um criador

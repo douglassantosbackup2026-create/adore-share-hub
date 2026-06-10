@@ -68,9 +68,28 @@ export function useMessages(contactId: string | null) {
 
   const sendMessage = useMutation({
     mutationFn: async (text: string) => {
+      if (!userId || !contactId) throw new Error("Missing user or contact");
+
+      if (userId !== contactId) {
+        const { data: sub } = await supabase
+          .from("subscriptions")
+          .select("plan, active, expires_at")
+          .eq("fan_id", userId)
+          .eq("creator_id", contactId)
+          .eq("active", true)
+          .maybeSingle();
+
+        const notExpired =
+          !sub?.expires_at || new Date(sub.expires_at) > new Date();
+
+        if (!sub || sub.plan !== "vip" || !notExpired) {
+          throw new Error("Mensagens diretas são exclusivas para assinantes VIP");
+        }
+      }
+
       const { error } = await supabase.from("messages").insert({
-        sender_id: userId!,
-        receiver_id: contactId!,
+        sender_id: userId,
+        receiver_id: contactId,
         text,
       });
       if (error) throw error;

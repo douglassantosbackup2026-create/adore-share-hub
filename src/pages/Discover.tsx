@@ -3,7 +3,6 @@ import { Search, SlidersHorizontal, Flame } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import CreatorCard from "@/components/CreatorCard";
 import CreatorCardSkeleton from "@/components/CreatorCardSkeleton";
-import mockCreators from "@/data/creators";
 import { useCreators } from "@/hooks/useCreators";
 
 const categories = ["Todos", "Fitness", "Arte", "Gastronomia", "Música", "Educação", "Lifestyle", "Moda", "Gaming"];
@@ -13,8 +12,7 @@ const Discover = () => {
   const [activeCategory, setActiveCategory] = useState("Todos");
   const [sortBy, setSortBy] = useState<"popular" | "preco" | "novo">("popular");
 
-  const { data: realCreators, isLoading } = useCreators();
-  const creators = realCreators?.length ? realCreators : mockCreators;
+  const { data: creators = [], isLoading } = useCreators();
 
   const filtered = creators
     .filter((c) => {
@@ -28,6 +26,11 @@ const Discover = () => {
     .sort((a, b) => {
       if (sortBy === "popular") return b.subscribers - a.subscribers;
       if (sortBy === "preco") return a.price - b.price;
+      if (sortBy === "novo") {
+        const aDate = new Date((a as { created_at?: string }).created_at ?? 0).getTime();
+        const bDate = new Date((b as { created_at?: string }).created_at ?? 0).getTime();
+        return bDate - aDate;
+      }
       return 0;
     });
 

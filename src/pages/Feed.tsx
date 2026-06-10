@@ -5,11 +5,14 @@ import { Heart, MessageCircle, Share2, Lock, MoreHorizontal, Bookmark, Send, Loa
 import PostSkeleton from "@/components/PostSkeleton";
 import { Skeleton } from "@/components/ui/skeleton";
 import Navbar from "@/components/Navbar";
-import { mockCreators } from "@/data/creators";
+import { RenewalBanner } from "@/components/RenewalBanner";
+import { Compass } from "lucide-react";
 import { usePosts } from "@/hooks/usePosts";
 import { useCreators } from "@/hooks/useCreators";
 import { useAuth } from "@/contexts/AuthContext";
-import { useMySubscriptions } from "@/hooks/useMySubscriptions";
+import { useMySubscriptionMap } from "@/hooks/useMySubscriptions";
+import { planMeetsMin, PLAN_LABELS, getCheapestPlanForMin } from "@/lib/plans";
+import { getLoginPath } from "@/lib/authRedirect";
 import { useComments } from "@/hooks/useComments";
 import { PixPaymentModal } from "@/components/PixPaymentModal";
 import { formatDistanceToNow } from "date-fns";
@@ -18,53 +21,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-const mockPosts = [
-  {
-    id: "mock-1",
-    creator: mockCreators[0],
-    time: "2h atrás",
-    text: "Treino de hoje foi incrível! 💪 Novo recorde pessoal no supino.",
-    image: "https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=700&q=80",
-    locked: false,
-    likes: 482,
-    comments: 37,
-    liked: false,
-  },
-  {
-    id: "mock-2",
-    creator: mockCreators[1],
-    time: "4h atrás",
-    text: "Novo ensaio fotográfico exclusivo 🎨 Para assinantes VIP.",
-    image: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?w=700&q=80",
-    locked: true,
-    likes: 1204,
-    comments: 89,
-    liked: false,
-  },
-  {
-    id: "mock-3",
-    creator: mockCreators[4],
-    time: "6h atrás",
-    text: "Aula gratuita de finanças pessoais hoje às 20h! Não perca 📊",
-    image: "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=700&q=80",
-    locked: false,
-    likes: 3102,
-    comments: 214,
-    liked: true,
-  },
-  {
-    id: "mock-4",
-    creator: mockCreators[6],
-    time: "1d atrás",
-    text: "Look do dia ✨ Esse combo de verão está me apaixonando.",
-    image: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=700&q=80",
-    locked: true,
-    likes: 2891,
-    comments: 156,
-    liked: false,
-  },
-];
-
 interface PixModalState {
   creatorId: string;
   creatorName: string;
@@ -72,24 +28,21 @@ interface PixModalState {
   amount: number;
 }
 
-// Fetches cheapest plan for each creator in the feed
-function useCreatorPlansMap(creatorIds: string[]) {
+function useCreatorPlansByCreator(creatorIds: string[]) {
   return useQuery({
-    queryKey: ["creatorPlansMap", creatorIds.join(",")],
+    queryKey: ["creatorPlansByCreator", creatorIds.join(",")],
     queryFn: async () => {
-      if (!creatorIds.length) return {} as Record<string, { plan_name: string; price: number }>;
+      if (!creatorIds.length) return {} as Record<string, { plan_name: string; price: number }[]>;
       const { data, error } = await supabase
         .from("creator_plans")
         .select("creator_id, plan_name, price")
         .in("creator_id", creatorIds)
         .order("price", { ascending: true });
       if (error) throw error;
-      // Keep only the cheapest plan per creator
-      const map: Record<string, { plan_name: string; price: number }> = {};
+      const map: Record<string, { plan_name: string; price: number }[]> = {};
       for (const row of data ?? []) {
-        if (!map[row.creator_id]) {
-          map[row.creator_id] = { plan_name: row.plan_name, price: Number(row.price) };
-        }
+        if (!map[row.creator_id]) map[row.creator_id] = [];
+        map[row.creator_id].push({ plan_name: row.plan_name, price: Number(row.price) });
       }
       return map;
     },
@@ -203,58 +156,43 @@ const Feed = () => {
   const { posts: realPosts, likePost, isLoading: postsLoading } = usePosts();
   const { data: realCreators, isLoading: creatorsLoading } = useCreators();
   const { user, profile } = useAuth();
-  const mySubscriptions = useMySubscriptions();
+  const mySubscriptionMap = useMySubscriptionMap();
   const [localLikes, setLocalLikes] = useState<Set<string>>(new Set());
-  const [mockState, setMockState] = useState(mockPosts);
   const [openComments, setOpenComments] = useState<Set<string>>(new Set());
   const [pixModal, setPixModal] = useState<PixModalState | null>(null);
 
-  // Use real creators for stories/suggestions, fallback to mock
-  const stories = realCreators?.length ? realCreators.slice(0, 6) : mockCreators.slice(0, 6);
-  const suggestions = realCreators?.length ? realCreators.slice(0, 5) : mockCreators.slice(2, 5);
+  const stories = realCreators?.slice(0, 6) ?? [];
+  const suggestions = realCreators?.slice(0, 5) ?? [];
 
-  // Use real posts or fallback to mock
-  const useReal = realPosts.length > 0;
+  const creatorIds = [...new Set(realPosts.map((p) => p.creator_id))];
+  const { data: plansByCreator = {} } = useCreatorPlansByCreator(creatorIds);
 
-  // Fetch cheapest plans for all creators in the feed
-  const creatorIds = useReal ? [...new Set(realPosts.map((p) => p.creator_id))] : [];
-  const { data: plansMap = {} } = useCreatorPlansMap(creatorIds);
-
-  const feedPosts = useReal
-    ? realPosts.map((p) => ({
-        id: p.id,
-        creator: {
-          id: p.creator_id,
-          name: p.creator.name,
-          handle: p.creator.handle ?? "",
-          avatar: p.creator.avatar_url ?? mockCreators[0].avatar,
-          price: 0,
-        },
-        time: formatDistanceToNow(new Date(p.created_at), { addSuffix: true, locale: ptBR }),
-        text: p.text,
-        image: p.media_url,
-        locked: p.min_plan !== "free" && !mySubscriptions.has(p.creator_id),
-        likes: p.likes_count,
-        comments: 0,
-        liked: localLikes.has(p.id),
-      }))
-    : mockPosts;
+  const feedPosts = realPosts.map((p) => ({
+    id: p.id,
+    min_plan: p.min_plan,
+    creator: {
+      id: p.creator_id,
+      name: p.creator.name,
+      handle: p.creator.handle ?? "",
+      avatar: p.creator.avatar_url ?? "/placeholder.svg",
+      price: 0,
+    },
+    time: formatDistanceToNow(new Date(p.created_at), { addSuffix: true, locale: ptBR }),
+    text: p.text,
+    image: p.media_url,
+    locked:
+      p.min_plan !== "free" &&
+      !planMeetsMin(mySubscriptionMap.get(p.creator_id), p.min_plan),
+    likes: p.likes_count,
+    comments: 0,
+    liked: localLikes.has(p.id),
+  }));
 
   const toggleLike = (id: string) => {
-    if (useReal) {
-      const post = realPosts.find((p) => p.id === id);
-      if (post && !localLikes.has(id)) {
-        setLocalLikes((prev) => new Set(prev).add(id));
-        likePost.mutate({ postId: id, currentLikes: post.likes_count });
-      }
-    } else {
-      setMockState((prev) =>
-        prev.map((p) =>
-          p.id === id
-            ? { ...p, liked: !p.liked, likes: p.liked ? p.likes - 1 : p.likes + 1 }
-            : p
-        )
-      );
+    const post = realPosts.find((p) => p.id === id);
+    if (post && !localLikes.has(id)) {
+      setLocalLikes((prev) => new Set(prev).add(id));
+      likePost.mutate({ postId: id });
     }
   };
 
@@ -266,29 +204,31 @@ const Feed = () => {
     });
   };
 
-  const handleSubscribeFromPost = (post: typeof feedPosts[number]) => {
+  const handleSubscribeFromPost = (post: typeof feedPosts[number] & { min_plan?: string }) => {
     if (!user) {
-      toast.error("Faça login para assinar");
+      const returnTo = window.location.pathname;
+      window.location.href = getLoginPath(returnTo);
       return;
     }
-    const plan = plansMap[post.creator.id];
+    const creatorPlans = plansByCreator[post.creator.id] ?? [];
+    const minPlan = post.min_plan ?? "fan";
+    const plan =
+      getCheapestPlanForMin(creatorPlans, minPlan) ??
+      creatorPlans[0];
     setPixModal({
       creatorId: String(post.creator.id),
       creatorName: post.creator.name,
-      planName: plan?.plan_name ?? "Plano Básico",
+      planName: plan?.plan_name ?? "fan",
       amount: plan?.price ?? 9.9,
     });
   };
-
-  const displayPosts = useReal ? feedPosts : mockState;
 
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
       <div className="container max-w-6xl pt-24 pb-16 flex gap-8">
-        {/* Main feed */}
         <div className="flex-1 min-w-0 flex flex-col gap-6">
-          {/* Stories */}
+          <RenewalBanner />
           <div className="glass-card rounded-2xl p-4">
             <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-hide">
               {creatorsLoading
@@ -335,7 +275,18 @@ const Feed = () => {
           {/* Posts */}
           {postsLoading ? (
             Array.from({ length: 3 }).map((_, i) => <PostSkeleton key={i} />)
-          ) : displayPosts.map((post) => (
+          ) : feedPosts.length === 0 ? (
+            <div className="glass-card rounded-2xl p-12 text-center">
+              <Compass className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground mb-4">Seu feed está vazio. Siga criadores para ver conteúdo.</p>
+              <Link
+                to="/discover"
+                className="inline-flex rounded-full bg-gradient-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-glow"
+              >
+                Descobrir criadores
+              </Link>
+            </div>
+          ) : feedPosts.map((post) => (
             <div key={post.id} className="glass-card rounded-2xl overflow-hidden">
               <div className="flex items-center justify-between p-4">
                 <Link to={`/creator/${post.creator.id}`} className="flex items-center gap-3">
@@ -362,9 +313,10 @@ const Feed = () => {
                     className={`w-full aspect-[4/3] object-cover ${post.locked ? "blur-xl scale-105" : ""}`}
                   />
                   {post.locked && (() => {
-                    const plan = plansMap[post.creator.id];
-                    const planLabels: Record<string, string> = { fan: "Fãs", superfan: "Super Fãs", vip: "VIP" };
-                    const planLabel = plan ? (planLabels[plan.plan_name] ?? plan.plan_name) : "Assinantes";
+                    const minPlan = (post as { min_plan?: string }).min_plan ?? "fan";
+                    const creatorPlans = plansByCreator[post.creator.id] ?? [];
+                    const plan = getCheapestPlanForMin(creatorPlans, minPlan) ?? creatorPlans[0];
+                    const planLabel = PLAN_LABELS[minPlan] ? `${PLAN_LABELS[minPlan]}s` : "Assinantes";
                     const price = plan?.price ?? 9.9;
                     return (
                       <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/60 backdrop-blur-sm">

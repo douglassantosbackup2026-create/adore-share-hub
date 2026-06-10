@@ -1,6 +1,16 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { planMeetsMin } from "@/lib/plans";
+
+function isActiveSubscription(sub: {
+  active: boolean;
+  expires_at?: string | null;
+}): boolean {
+  if (!sub.active) return false;
+  if (!sub.expires_at) return true;
+  return new Date(sub.expires_at) > new Date();
+}
 
 export function useSubscription(creatorId: string | undefined) {
   const { user } = useAuth();
@@ -19,29 +29,28 @@ export function useSubscription(creatorId: string | undefined) {
         .maybeSingle();
 
       if (error) throw error;
+      if (!data || !isActiveSubscription(data)) return null;
       return data;
     },
   });
 
-  const subscribe = useMutation({
-    mutationFn: async (plan: string) => {
-      const { error } = await supabase.from("subscriptions").insert({
-        fan_id: user!.id,
-        creator_id: creatorId!,
-        plan,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["subscription", user?.id, creatorId] });
-      queryClient.invalidateQueries({ queryKey: ["creatorSubsCount", creatorId] });
-    },
-  });
+  const subscription = subscriptionQuery.data;
+  const isSubscribed = !!subscription;
+
+  const hasAccessTo = (minPlan: string) =>
+    planMeetsMin(subscription?.plan, minPlan);
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["subscription", user?.id, creatorId] });
+    queryClient.invalidateQueries({ queryKey: ["mySubscriptions", user?.id] });
+    queryClient.invalidateQueries({ queryKey: ["creatorSubsCount", creatorId] });
+  };
 
   return {
-    subscription: subscriptionQuery.data,
-    isSubscribed: !!subscriptionQuery.data,
+    subscription,
+    isSubscribed,
+    hasAccessTo,
     isLoading: subscriptionQuery.isLoading,
-    subscribe,
+    invalidate,
   };
 }

@@ -19,6 +19,9 @@ import { Button } from "@/components/ui/button";
 import { useAffiliateLinks } from "@/hooks/useAffiliateLinks";
 import { useMyAffiliateRequest, useCreateAffiliateRequest } from "@/hooks/useAffiliateRequests";
 import { useCreatorPixel } from "@/hooks/useCreatorPixel";
+import { getLoginPath } from "@/lib/authRedirect";
+import { normalizePlanName, PLAN_LABELS, PLAN_ORDER, planRank } from "@/lib/plans";
+import { trackConversion } from "@/lib/conversionEvents";
 
 
 const defaultPlans = [
@@ -57,13 +60,14 @@ const CreatorProfile = () => {
   const { user, loading: authLoading } = useAuth();
   
   const { profile: realProfile, plans: realPlans, posts: realPosts, subscriberCount } = useCreatorProfile(id, user);
-  const { isSubscribed, subscribe } = useSubscription(id);
+  const { subscription, isSubscribed, hasAccessTo } = useSubscription(id);
   const { isFollowing, followersCount, toggle: toggleFollow, isPending: followPending } = useFollow(id);
 
   const [activeTab, setActiveTab] = useState("Todos");
   const [liked, setLiked] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(0);
   const [pixModalOpen, setPixModalOpen] = useState(false);
+  const [tipModalOpen, setTipModalOpen] = useState(false);
 
   // Capture ref code from URL
   useEffect(() => {
@@ -109,14 +113,14 @@ const CreatorProfile = () => {
     // approved — generate/copy link
     const existing = affiliateLinks.find((l: any) => l.creator_id === id);
     if (existing) {
-      const url = `${window.location.origin}/profile/${id}?ref=${existing.code}`;
+      const url = `${window.location.origin}/creator/${id}?ref=${existing.code}`;
       navigator.clipboard.writeText(url);
       toast.success("Link de afiliado copiado!");
       return;
     }
     try {
       const newLink = await createAffiliateLink.mutateAsync(id!);
-      const url = `${window.location.origin}/profile/${id}?ref=${newLink.code}`;
+      const url = `${window.location.origin}/creator/${id}?ref=${newLink.code}`;
       navigator.clipboard.writeText(url);
       toast.success("Link de afiliado gerado e copiado!");
     } catch {
@@ -196,10 +200,11 @@ const CreatorProfile = () => {
 
   // Fire ViewContent when profile is loaded
   useEffect(() => {
-    if (realProfile) {
+    if (realProfile && id) {
       sendMetaEvent({ event_name: "ViewContent", creator_pixel_id: creatorPixelId, creator_access_token: creatorAccessToken });
+      trackConversion("profile_view", { creatorId: id });
     }
-  }, [realProfile?.id]);
+  }, [realProfile?.id, id]);
 
   // If no real profile found, show 404
   if (!realProfile) {
@@ -232,35 +237,45 @@ const CreatorProfile = () => {
 
   const plans = realPlans.length
     ? realPlans.map((p, i) => ({
-        name: p.plan_name,
+        name: PLAN_LABELS[p.plan_name] ?? p.plan_name,
+        planKey: p.plan_name,
         emoji: ["💖", "🔥", "💎"][i % 3],
         desc: defaultPlans[i % 3]?.desc ?? "",
         perks: defaultPlans[i % 3]?.perks ?? [],
-        price: p.price,
+        price: Number(p.price),
         popular: i === 1,
       }))
-    : defaultPlans.map((p) => ({ ...p, price: (creator as any).price * p.multiplier }));
+    : defaultPlans.map((p, i) => ({
+        ...p,
+        planKey: PLAN_ORDER[i] ?? "fan",
+        price: (creator as any).price * p.multiplier,
+      }));
 
   // Build display posts from real data
   const displayPosts = realPosts.map((post) => ({
     id: post.id,
-    locked: post.min_plan !== "free" && !isSubscribed,
+    locked: post.min_plan !== "free" && !hasAccessTo(post.min_plan),
     type: post.media_type === "video" ? "video" : "photo",
     mediaUrl: post.media_url,
     minPlan: post.min_plan,
   }));
 
-  const handleLockedPostClick = () => {
+  const handleLockedPostClick = (minPlan: string) => {
     if (!user) {
-      toast.info("Crie uma conta para acessar conteúdo exclusivo");
-      navigate("/signup");
+      navigate(getLoginPath(`/creator/${id}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`));
       return;
     }
-    if (!isSubscribed) {
-      setSelectedPlan(0);
+    if (!hasAccessTo(minPlan)) {
+      const idx = plans.findIndex((p) => normalizePlanName((p as { planKey?: string }).planKey ?? p.name) === normalizePlanName(minPlan));
+      setSelectedPlan(idx >= 0 ? idx : 0);
       setPixModalOpen(true);
     }
   };
+
+  const currentSubRank = subscription?.plan ? planRank(subscription.plan) : 0;
+  const upgradePlanIndex = isSubscribed
+    ? plans.findIndex((p) => planRank((p as { planKey: string }).planKey) > currentSubRank)
+    : -1;
 
   const handleSubscribe = () => {
     if (!user) {
@@ -268,18 +283,38 @@ const CreatorProfile = () => {
       return;
     }
     if (isSubscribed) {
-      toast.info("Você já é assinante!");
-      return;
+      if (upgradePlanIndex >= 0) {
+        setSelectedPlan(upgradePlanIndex);
+      } else {
+        toast.info("Você já é assinante!");
+        return;
+      }
     }
+    const planIdx = isSubscribed && upgradePlanIndex >= 0 ? upgradePlanIndex : selectedPlan;
     sendMetaEvent({
       event_name: "InitiateCheckout",
       user_email: user.email,
-      value: plans[selectedPlan].price,
+      value: plans[planIdx].price,
       currency: "BRL",
       creator_pixel_id: creatorPixelId,
       creator_access_token: creatorAccessToken,
     });
+    trackConversion("checkout_initiated", { creatorId: id, metadata: { plan: (plans[planIdx] as { planKey: string }).planKey } });
     setPixModalOpen(true);
+  };
+
+  const canMessage = isOwner || (subscription?.plan === "vip" && isSubscribed);
+
+  const handleMessage = () => {
+    if (!user) {
+      navigate(getLoginPath(`/creator/${id}`));
+      return;
+    }
+    if (!canMessage) {
+      toast.info("Mensagens diretas são exclusivas para assinantes VIP");
+      return;
+    }
+    navigate(`/messages?contact=${id}`);
   };
 
   return (
@@ -382,7 +417,15 @@ const CreatorProfile = () => {
             >
               <Heart className={`h-5 w-5 ${liked ? "fill-current" : ""}`} />
             </button>
-            <button className="flex h-11 w-11 items-center justify-center rounded-xl border border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-border transition-all duration-200">
+            <button
+              onClick={handleMessage}
+              title={canMessage ? "Enviar mensagem" : "Exclusivo assinantes VIP"}
+              className={`flex h-11 w-11 items-center justify-center rounded-xl border transition-all duration-200 ${
+                canMessage
+                  ? "border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-border"
+                  : "border-border/40 bg-muted/30 text-muted-foreground/50 cursor-not-allowed"
+              }`}
+            >
               <MessageCircle className="h-5 w-5" />
             </button>
             {isOwner && (
@@ -530,7 +573,7 @@ const CreatorProfile = () => {
                 {displayPosts.map((post) => (
                   <div
                     key={post.id}
-                    onClick={post.locked ? handleLockedPostClick : undefined}
+                    onClick={post.locked ? () => handleLockedPostClick(post.minPlan) : undefined}
                     className="group relative aspect-square rounded-xl overflow-hidden bg-muted border border-border/40 cursor-pointer"
                   >
                     {post.locked ? (
@@ -623,12 +666,39 @@ const CreatorProfile = () => {
 
             <button
               onClick={handleSubscribe}
-              className="w-full rounded-2xl bg-gradient-primary py-4 font-display font-bold text-primary-foreground shadow-glow transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_8px_30px_hsl(340_80%_58%_/_0.5)]"
+              disabled={isSubscribed && upgradePlanIndex < 0}
+              className="w-full rounded-2xl bg-gradient-primary py-4 font-display font-bold text-primary-foreground shadow-glow transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_8px_30px_hsl(340_80%_58%_/_0.5)] disabled:opacity-60 disabled:hover:scale-100"
             >
-              {isSubscribed
+              {isSubscribed && upgradePlanIndex < 0
                 ? "Já assinado ✓"
-                : `Assinar por R$ ${plans[selectedPlan].price.toFixed(2).replace(".", ",")}/mês`}
+                : isSubscribed && upgradePlanIndex >= 0
+                  ? `Upgrade para ${plans[upgradePlanIndex].name}`
+                  : `Assinar por R$ ${plans[selectedPlan].price.toFixed(2).replace(".", ",")}/mês`}
             </button>
+
+            {isSubscribed && upgradePlanIndex >= 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPlan(upgradePlanIndex);
+                  setPixModalOpen(true);
+                }}
+                className="w-full rounded-2xl border border-primary/40 py-3 text-sm font-semibold text-primary hover:bg-primary/5 transition-colors"
+              >
+                Fazer upgrade para {plans[upgradePlanIndex].name} — R${" "}
+                {plans[upgradePlanIndex].price.toFixed(2).replace(".", ",")}/mês
+              </button>
+            )}
+
+            {user && !isOwner && (
+              <button
+                type="button"
+                onClick={() => setTipModalOpen(true)}
+                className="w-full rounded-2xl border border-border/60 py-3 text-sm font-semibold text-foreground hover:border-primary/40 transition-colors"
+              >
+                Enviar gorjeta via Pix
+              </button>
+            )}
 
             <p className="text-center text-xs text-muted-foreground">
               Cancele quando quiser. Sem fidelidade.
@@ -701,19 +771,34 @@ const CreatorProfile = () => {
       <div className="h-24" />
 
       {user && (
-        <PixPaymentModal
-          open={pixModalOpen}
-          onClose={() => setPixModalOpen(false)}
-          onSuccess={() => {}}
-          creatorId={id!}
-          creatorName={creator.name}
-          planName={plans[selectedPlan].name}
-          amount={plans[selectedPlan].price}
-          fanId={user.id}
-          fanEmail={user.email ?? ""}
-          creatorPixelId={creatorPixelId}
-          creatorAccessToken={creatorAccessToken}
-        />
+        <>
+          <PixPaymentModal
+            open={pixModalOpen}
+            onClose={() => setPixModalOpen(false)}
+            onSuccess={() => {}}
+            creatorId={id!}
+            creatorName={creator.name}
+            planName={(plans[selectedPlan] as { planKey: string }).planKey}
+            amount={plans[selectedPlan].price}
+            fanId={user.id}
+            fanEmail={user.email ?? ""}
+            creatorPixelId={creatorPixelId}
+            creatorAccessToken={creatorAccessToken}
+          />
+          <PixPaymentModal
+            open={tipModalOpen}
+            onClose={() => setTipModalOpen(false)}
+            onSuccess={() => toast.success("Gorjeta enviada! Obrigado pelo apoio.")}
+            creatorId={id!}
+            creatorName={creator.name}
+            planName="tip"
+            amount={10}
+            fanId={user.id}
+            fanEmail={user.email ?? ""}
+            creatorPixelId={creatorPixelId}
+            creatorAccessToken={creatorAccessToken}
+          />
+        </>
       )}
 
       {/* Edit post modal */}

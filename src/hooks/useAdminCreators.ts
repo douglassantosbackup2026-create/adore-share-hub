@@ -54,6 +54,31 @@ export function useAdminPendingCreators() {
   });
 }
 
+async function sendCreatorApprovedEmail(creatorId: string) {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("email, name")
+    .eq("id", creatorId)
+    .maybeSingle();
+
+  if (!profile?.email) return;
+
+  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+  await fetch(`https://${projectId}.supabase.co/functions/v1/send-notification`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+    },
+    body: JSON.stringify({
+      to_email: profile.email,
+      subject: "Sua conta criador foi aprovada na Flare",
+      body: `Olá${profile.name ? ` ${profile.name}` : ""}! Seu perfil de criador foi aprovado. Acesse o dashboard para começar.`,
+      template: "creator_approved",
+    }),
+  }).catch(() => {});
+}
+
 export function useApproveCreator() {
   const qc = useQueryClient();
   return useMutation({
@@ -63,6 +88,7 @@ export function useApproveCreator() {
         .update({ approved: true })
         .eq("id", creatorId);
       if (error) throw error;
+      await sendCreatorApprovedEmail(creatorId);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["adminPendingCreators"] });

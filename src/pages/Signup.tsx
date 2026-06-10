@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { getPostAuthPath } from "@/lib/authRedirect";
 import { Flame, Eye, EyeOff, Mail, Lock, User, AtSign, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,12 +13,21 @@ import { sendMetaEvent } from "@/lib/metaCapi";
 type Role = "fan" | "creator";
 
 const Signup = () => {
-  const [role, setRole] = useState<Role>("fan");
+  const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get("returnTo");
+  const initialRole = searchParams.get("role") === "creator" ? "creator" : "fan";
+  const [role, setRole] = useState<Role>(initialRole);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
-  const { signUp, user } = useAuth();
+  const { signUp, user, profile, loading } = useAuth();
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (!loading && user && profile) {
+      navigate(getPostAuthPath(returnTo, profile.role), { replace: true });
+    }
+  }, [user, profile, loading, navigate, returnTo]);
 
   const [form, setForm] = useState({
     name: "",
@@ -27,12 +37,6 @@ const Signup = () => {
     handle: "",
     category: "",
   });
-
-  // Redirect if already logged in
-  if (user) {
-    navigate("/feed", { replace: true });
-    return null;
-  }
 
   const set = (field: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -64,7 +68,11 @@ const Signup = () => {
     } else {
       sendMetaEvent({ event_name: "CompleteRegistration", user_email: form.email });
       toast({ title: "Conta criada com sucesso!" });
-      navigate(role === "creator" ? "/onboarding" : "/fan-onboarding");
+      if (returnTo && role === "fan") {
+        navigate(returnTo, { replace: true });
+      } else {
+        navigate(role === "creator" ? "/onboarding" : "/fan-onboarding");
+      }
     }
   };
 

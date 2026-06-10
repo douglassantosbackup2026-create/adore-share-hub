@@ -2,12 +2,16 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
+import { getLoginPath } from "@/lib/authRedirect";
 
 export function useFollow(creatorId: string | undefined) {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
+
+  const loginPath = getLoginPath(location.pathname + location.search);
 
   // Check if the current user already follows this creator
   const { data: followData } = useQuery({
@@ -48,7 +52,7 @@ export function useFollow(creatorId: string | undefined) {
     mutationFn: async () => {
       if (!user) {
         toast.error("Faça login para seguir");
-        navigate("/login");
+        navigate(loginPath);
         throw new Error("Not authenticated");
       }
       const { error } = await supabase
@@ -89,7 +93,7 @@ export function useFollow(creatorId: string | undefined) {
   const toggle = () => {
     if (!user) {
       toast.error("Faça login para seguir");
-      navigate("/login");
+      navigate(loginPath);
       return;
     }
     if (isFollowing) {
